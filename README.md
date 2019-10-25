@@ -1,37 +1,17 @@
-[Website](https://www.bitcoinunlimited.info)  | [Download](https://www.bitcoinunlimited.info/download) | [Setup](README.md)  |  [Xthin](doc/bu-xthin.md)  |  [Xpedited](doc/bu-xpedited-forwarding.md)  |   [Miner](doc/miner.md)
+[Website](https://www.diskcoin.org/)  | [Download](https://github.com/diskcoin-apps-team/wiki/releases) | [Setup](README.md)
 
-[![Build Status](https://travis-ci.org/BitcoinUnlimited/BitcoinUnlimited.svg?branch=dev)](https://travis-ci.org/BitcoinUnlimited/BitcoinUnlimited)
+# What is Diskcoin?
 
-# What is Bitcoin?
-
-Bitcoin is an experimental new digital currency that enables instant payments to
-anyone, anywhere in the world. Bitcoin uses peer-to-peer technology to operate
-with no central authority: managing transactions and issuing money are carried
-out collectively by the network. Bitcoin Unlimited is the name of open source
-software which enables the use of this currency.
-
-For more information, as well as an immediately useable, binary version of
-the Bitcoin Unlimited software, see https://www.bitcoinunlimited.info/download, or read the
-[original whitepaper](https://www.bitcoinunlimited.info/resources/bitcoin.pdf).
-
-
-
-# What is Bitcoin Unlimited?
-
-Bitcoin Unlimited is an implementation of the Bitcoin client software that is based on Bitcoin Core.
-However, Bitcoin Unlimited has a very different philosophy than Core.
-
-It follows a philosophy and is administered by a formal process described in the [Articles of Federation](https://www.bitcoinunlimited.info/resources/BUarticles.pdf).
-In short, we believe in market-driven decision making, emergent consensus, and giving our users choices.
+Diskcoin is a scalable peer-to-peer crypto currency system that is more energy efficient than Bitcoin, while retaining most of the features of Bitcoin, such as peer-to-peer networks, minimal network architecture, and security. Diskcoin uses the Conditioned Proof Of Capacity ( CPoC ) consensus algorithm to reduce the consumption of electricity and lower the entry barriers in the process of crypto currency production, which is more decentralized, without affecting security. In addition, Diskcoin adopts an algorithm named the Dynamic Equilibrium Staking ( DES ) to adjust the staking percentage according to the difficulty of mining, instead of a simply fixed or decrease progressively staking proportion. Diskcoin is an great innovation in the evolution of the CPoC consensus algorithm.
 
 
 # Installing
 
-For info on installing Bitcoin Unlimited see [INSTALL.md](INSTALL.md)
+Diskcoin is a Bitcoin Unlimited fork. For info on installing Diskcoin, please refer to the [INSTALL.md](INSTALL.md) of Bitcoin Unlimited.
 
 # Building
 
-For info on building Bitcoin Unlimited from sources, see
+For info on building Diskcoin from sources, see
 - [Dependencies](doc/dependencies.md)
 - [Unix Build Notes](doc/build-unix.md)
 - [Windows Build Notes](doc/build-windows.md)
@@ -48,14 +28,14 @@ They are not complete guides, but include notes on the necessary libraries, comp
 - [Setting up an Xpedited Relay Network](bu-xpedited-forwarding.md)
 - [Tor Support](doc/tor.md)
 - [Init Scripts (systemd/upstart/openrc)](doc/init.md)
-- [Using Bitcoin Unlimited for Mining](doc/miner.md)
+- [Using Diskcoin for Mining](doc/miner.md)
 
 # Development
 
 - [Developer Notes](doc/developer-notes.md)
 - [Contributing](CONTRIBUTING.md)
 - [BUIP, BIP and Bitcoin Cash Specifications](doc/bips-buips-specifications.md)
-- [Bitcoin Unlimited Improvement Proposal Archive](https://github.com/BitcoinUnlimited/BUIP)
+- [Bitcoin Diskcoin Proposal Archive](https://github.com/BitcoinUnlimited/BUIP)
 - [Multiwallet Qt Development](doc/multiwallet-qt.md)
 - [Release Notes](doc/release-notes.md)
 - [Release Process](doc/release-process.md)
@@ -71,17 +51,14 @@ They are not complete guides, but include notes on the necessary libraries, comp
 
 # Online resources
 
- - [Issue Tracker](https://github.com/BitcoinUnlimited/BitcoinUnlimited/issues)
- - [The Bitcoin Forum](https://www.bitco.in/forum)
- - [Reddit /r/btc](https://www.reddit.com/r/btc)
- - [Reddit /r/bitcoin_unlimited](https://www.reddit.com/r/bitcoin_unlimited)
- - [Slack Channel](https://bitcoinunlimited.slack.com/)
-
+ - [The Bitcointalk Forum](https://bitcointalk.org/index.php?topic=5154264.0)
+ - [Twitter](https://twitter.com/Diskcoinorg)
+ - [Reddit](hhttps://www.reddit.com/r/DiskcoinOrg)
+ - [Discord](https://discordapp.com/invite/d54EGkW)
+ - [Wiki](https://www.diskcoin.wiki/en)
+ - [Telegram Channel](https://t.me/DiskcoinNews)
 
 
 # License
 
-Bitcoin Unlimited is released under the terms of the [MIT software license](http://www.opensource.org/licenses/mit-license.php). See [COPYING](COPYING) for more
-information.
-This product includes software developed by the OpenSSL Project for use in the [OpenSSL Toolkit](https://www.openssl.org/). This product includes
-cryptographic software written by Eric Young ([eay@cryptsoft.com](mailto:eay@cryptsoft.com)), and UPnP software written by Thomas Bernard.
+Diskcoin is released under the terms of the [MIT software license](http://www.opensource.org/licenses/mit-license.php).
