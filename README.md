@@ -53,7 +53,7 @@ They are not complete guides, but include notes on the necessary libraries, comp
 
  - [The Bitcointalk Forum](https://bitcointalk.org/index.php?topic=5154264.0)
  - [Twitter](https://twitter.com/Diskcoinorg)
- - [Reddit](hhttps://www.reddit.com/r/DiskcoinOrg)
+ - [Reddit](https://www.reddit.com/r/DiskcoinOrg)
  - [Discord](https://discordapp.com/invite/d54EGkW)
  - [Wiki](https://www.diskcoin.wiki/en)
  - [Telegram Channel](https://t.me/DiskcoinNews)
