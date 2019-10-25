@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -198,11 +198,6 @@ bool SetStartOnSystemStartup(bool fAutoStart);
 void saveWindowGeometry(const QString &strSetting, QWidget *parent);
 /** Restore window size and position */
 void restoreWindowGeometry(const QString &strSetting, const QSize &defaultSizeIn, QWidget *parent);
-
-/** Save table column header configuration */
-void saveColumnConfiguration(const QString &strSetting, QHeaderView *header);
-/** Restore table column header configuration */
-bool restoreColumnConfiguration(const QString &strSetting, QHeaderView *header);
 
 /* Convert QString to OS specific boost path through UTF-8 */
 fs::path qstringToBoostPath(const QString &path);

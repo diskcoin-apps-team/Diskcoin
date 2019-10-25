@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,16 +24,15 @@ enum DeploymentPos
     // When a bit goes back to being unused, it should be renamed to
     // DEPLOYMENT_UNASSIGNED_BIT_x .
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in versionbits.cpp
-
+    DEPLOYMENT_CSV = 0, // bit 0 - deployment of BIP68, BIP112, and BIP113.
     // begin unassigned bits. Rename bits when allocated.
-    DEPLOYMENT_UNASSIGNED_BIT_0 = 0,
-    DEPLOYMENT_UNASSIGNED_BIT_1,
-    DEPLOYMENT_UNASSIGNED_BIT_2,
-    DEPLOYMENT_UNASSIGNED_BIT_3,
-    DEPLOYMENT_UNASSIGNED_BIT_4,
-    DEPLOYMENT_UNASSIGNED_BIT_5,
-    DEPLOYMENT_UNASSIGNED_BIT_6,
-    DEPLOYMENT_UNASSIGNED_BIT_7,
+    DEPLOYMENT_128MB_BLOCK,
+    DEPLOYMENT_MUL_SHIFT_INVERT,
+    DEPLOYMENT_UNLIMITED_SCRIPT_OPCODES,
+    DEPLOYMENT_CHECKDATASIG,
+    DEPLOYMENT_100BYTE_MIN_TX,
+    DEPLOYMENT_CTOR,
+    DEPLOYMENT_SCRIPTSIG_PUSH_ONLY,
     DEPLOYMENT_UNASSIGNED_BIT_8,
     DEPLOYMENT_UNASSIGNED_BIT_9,
     DEPLOYMENT_UNASSIGNED_BIT_10,
@@ -98,8 +97,6 @@ struct Params
     int BIP65Height;
     /** Block height at which BIP66 becomes active */
     int BIP66Height;
-    /** Block height at which BIP68, BIP112 and BIP113 become active */
-    int BIP68Height;
     /**
      * Deployment parameters for the 29 bits (0..28) defined by bip135
      */
@@ -152,10 +149,10 @@ struct Params
     int may2018Height;
     /** Nov 15, 2018 activation height */
     int nov2018Height;
-    /** May 15, 2019 actication height */
-    int may2019Height;
-    /** Nov 15, 2019 MTP activation time will be 12:00:00 UTC */
-    uint64_t nov2019ActivationTime;
+    /** May 15, 2019 actication time will be 12:00:00 UTC */
+    int may2019ActivationTime;
+    /** Nov 15, 2018 SV activation height */
+    int sv2018Height;
 };
 } // namespace Consensus
 

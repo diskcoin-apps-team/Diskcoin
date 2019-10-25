@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2016-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -12,7 +12,6 @@
 #include "dosman.h"
 #include "net.h"
 #include "pow.h"
-#include "requestManager.h"
 #include "script/sigcache.h"
 #include "timedata.h"
 #include "txorphanpool.h"
@@ -177,7 +176,6 @@ void CParallelValidation::Cleanup(const CBlock &block, CBlockIndex *pindex)
         }
         std::sort(vSequenceId.begin(), vSequenceId.end());
 
-        WRITELOCK(cs_mapBlockIndex);
         std::vector<std::pair<uint32_t, uint256> >::reverse_iterator riter = vSequenceId.rbegin();
         while (riter != vSequenceId.rend())
         {
@@ -195,6 +193,7 @@ void CParallelValidation::Cleanup(const CBlock &block, CBlockIndex *pindex)
                 pindex->nSequenceId = (*riter).first;
                 (*riter).first = nId;
 
+                WRITELOCK(cs_mapBlockIndex);
                 BlockMap::iterator it = mapBlockIndex.find((*riter).second);
                 if (it != mapBlockIndex.end())
                     it->second->nSequenceId = nId;
@@ -430,7 +429,7 @@ void CParallelValidation::ClearOrphanCache(const CBlockRef pblock)
 {
     if (!IsInitialBlockDownload())
     {
-        WRITELOCK(orphanpool.cs_orphanpool);
+        WRITELOCK(orphanpool.cs);
         {
             // Erase any orphans that may have been in the previous block and arrived
             // after the previous block had already been processed.
@@ -458,9 +457,7 @@ void CParallelValidation::ClearOrphanCache(const CBlockRef pblock)
 //  the thread has finished.
 void CParallelValidation::HandleBlockMessage(CNode *pfrom, const string &strCommand, CBlockRef pblock, const CInv &inv)
 {
-    // Indicate that the block was received and is about to be processed. Setting the processing flag
-    // prevents us from re-requesting the block during the time it is being processed.
-    requester.ProcessingBlock(pblock->GetHash(), pfrom);
+    uint64_t nBlockSize = pblock->GetBlockSize();
 
     // NOTE: You must not have a cs_main lock before you aquire the semaphore grant or you can end up deadlocking
     AssertLockNotHeld(cs_main);
@@ -507,7 +504,7 @@ void CParallelValidation::HandleBlockMessage(CNode *pfrom, const string &strComm
                     }
 
                     // if the new competing block is the biggest or of equal size to the biggest then reject it.
-                    if (fCompeting && (nLargestBlockSize <= pblock->GetBlockSize()))
+                    if (fCompeting && (nLargestBlockSize <= nBlockSize))
                     {
                         LOG(PARALLEL,
                             "New Block validation terminated - Too many blocks currently being validated: %s\n",
@@ -566,10 +563,11 @@ void HandleBlockMessageThread(CNode *pfrom, const string strCommand, CBlockRef p
 {
     boost::thread::id this_id(boost::this_thread::get_id());
 
+    // LOGAF("block baseTarget %d", pblock->nBaseTarget);
     try
     {
         uint64_t nSizeBlock = pblock->GetBlockSize();
-        int64_t startTime = GetStopwatchMicros();
+        int64_t startTime = GetTimeMicros();
         CValidationState state;
 
         // Indicate that the block was fully received. At this point we have either a block or a fully reconstructed
@@ -596,41 +594,73 @@ void HandleBlockMessageThread(CNode *pfrom, const string strCommand, CBlockRef p
             ProcessNewBlock(state, chainparams, pfrom, pblock.get(), forceProcessing, nullptr, false);
         }
 
-        if (!state.IsInvalid())
+        int nDoS;
+        if (state.IsInvalid(nDoS))
         {
-            LargestBlockSeen(nSizeBlock); // update largest block seen
-
-            double nValidationTime = (double)(GetStopwatchMicros() - startTime) / 1000000.0;
-            if ((strCommand != NetMsgType::BLOCK) &&
-                (IsThinBlocksEnabled() || IsGrapheneBlockEnabled() || IsCompactBlocksEnabled()))
+            LOGA("Invalid block due to %s\n", state.GetRejectReason().c_str());
+            if (!strCommand.empty())
             {
-                LOG(THIN | GRAPHENE | CMPCT, "Processed Block %s reconstructed from (%s) in %.2f seconds, peer=%s\n",
-                    inv.hash.ToString(), strCommand, (double)(GetStopwatchMicros() - startTime) / 1000000.0,
-                    pfrom->GetLogName());
+                pfrom->PushMessage("reject", strCommand, state.GetRejectCode(),
+                    state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH), inv.hash);
+                if (nDoS > 0)
+                    dosMan.Misbehaving(pfrom, nDoS);
+            }
 
-                if (strCommand == NetMsgType::GRAPHENEBLOCK || strCommand == NetMsgType::GRAPHENETX)
-                    graphenedata.UpdateValidationTime(nValidationTime);
-                else if (strCommand == NetMsgType::CMPCTBLOCK || strCommand == NetMsgType::BLOCKTXN)
-                    compactdata.UpdateValidationTime(nValidationTime);
-                else
-                    thindata.UpdateValidationTime(nValidationTime);
+            // the current fork is bad due to this block so reset the best header to the best fully-validated block
+            // so we can download another fork of headers (and blocks).
+            LOCK(cs_main);
+            CBlockIndex *mostWork = FindMostWorkChain();
+            CBlockIndex *tip = chainActive.Tip();
+            if (mostWork && tip && (mostWork->nChainWork > tip->nChainWork))
+            {
+                pindexBestHeader = mostWork;
             }
             else
             {
-                LOG(THIN | GRAPHENE | CMPCT, "Processed Regular Block %s in %.2f seconds, peer=%s\n",
-                    inv.hash.ToString(), (double)(GetStopwatchMicros() - startTime) / 1000000.0, pfrom->GetLogName());
+                pindexBestHeader = tip;
+            }
+        }
+        else
+        {
+            LargestBlockSeen(nSizeBlock); // update largest block seen
+
+            double nValidationTime = (double)(GetTimeMicros() - startTime) / 1000000.0;
+            if ((strCommand != NetMsgType::BLOCK) && (IsThinBlocksEnabled() || IsGrapheneBlockEnabled()))
+            {
+                LOG(THIN | GRAPHENE, "Processed Block %s reconstructed from (%s) in %.2f seconds, peer=%s\n",
+                    inv.hash.ToString(), strCommand, (double)(GetTimeMicros() - startTime) / 1000000.0,
+                    pfrom->GetLogName());
+
+                if (strCommand != NetMsgType::GRAPHENEBLOCK)
+                    thindata.UpdateValidationTime(nValidationTime);
+                else
+                    graphenedata.UpdateValidationTime(nValidationTime);
+            }
+            else
+            {
+                LOG(THIN | GRAPHENE, "Processed Regular Block %s in %.2f seconds, peer=%s\n", inv.hash.ToString(),
+                    (double)(GetTimeMicros() - startTime) / 1000000.0, pfrom->GetLogName());
             }
         }
 
         // When we request a thin type block we may get back a regular block if it is smaller than
-        // either of the former.  Therefore we have to remove the thintype block in flight if it
+        // either of the former.  Therefore we have to remove the thin or graphene block in flight if it
         // exists and we also need to check that the block didn't arrive from some other peer.
-        thinrelay.ClearBlockInFlight(pfrom, inv.hash);
+        {
+            // Remove thinblock data and thinblock in flight
+            thinrelay.ClearBlockInFlight(pfrom, inv.hash);
+            pfrom->firstBlock += 1;
+        }
 
-        // Increment block counter
-        pfrom->firstBlock += 1;
+        // When we no longer have any thinblocks in flight then clear our any data
+        // just to make sure we don't somehow get growth over time.
+        if (thinrelay.TotalBlocksInFlight() == 0)
+        {
+            thinrelay.ResetTotalBlockBytes();
+            graphenedata.ResetGrapheneBlockBytes();
+        }
 
-        // Erase any txns from the orphan cache, which were in this block, and that are now no longer needed.
+        // Erase any txns from the orphan cache that are no longer needed
         PV->ClearOrphanCache(pblock);
 
         // If chain is nearly caught up then flush the state after a block is finished processing and the

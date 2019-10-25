@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -80,12 +80,12 @@ public:
     PaymentServer(QObject *parent, bool startLocalServer = true);
     ~PaymentServer();
 
-    // Load root certificate authorities. Pass nullptr (default)
+    // Load root certificate authorities. Pass NULL (default)
     // to read from the file specified in the -rootcertificates setting,
     // or, if that's not set, to use the system default root certificates.
     // If you pass in a store, you should not X509_STORE_free it: it will be
     // freed either at exit or when another set of CAs are loaded.
-    static void LoadRootCAs(X509_STORE *store = nullptr);
+    static void LoadRootCAs(X509_STORE *store = NULL);
 
     // Return certificate store
     static X509_STORE *getCertStore() { return certStore; }

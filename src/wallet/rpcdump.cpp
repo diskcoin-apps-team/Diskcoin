@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -342,7 +342,7 @@ UniValue importaddress(const UniValue &params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address or script");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Diskcoin address or script");
     }
 
     if (fRescanLocal)
@@ -415,7 +415,7 @@ UniValue importaddresses(const UniValue &params, bool fHelp)
         }
         else
         {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address or script");
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Diskcoin address or script");
         }
     }
 
@@ -708,11 +708,11 @@ UniValue dumpprivkey(const UniValue &params, bool fHelp)
         return NullUniValue;
 
     if (fHelp || params.size() != 1)
-        throw runtime_error("dumpprivkey \"bitcoinaddress\"\n"
-                            "\nReveals the private key corresponding to 'bitcoinaddress'.\n"
+        throw runtime_error("dumpprivkey \"diskcoinaddress\"\n"
+                            "\nReveals the private key corresponding to 'diskcoinaddress'.\n"
                             "Then the importprivkey can be used with this output\n"
                             "\nArguments:\n"
-                            "1. \"bitcoinaddress\"   (string, required) The bitcoin address for the private key\n"
+                            "1. \"diskcoinaddress\"   (string, required) The diskcoin address for the private key\n"
                             "\nResult:\n"
                             "\"key\"                (string) The private key\n"
                             "\nExamples:\n" +
@@ -728,7 +728,7 @@ UniValue dumpprivkey(const UniValue &params, bool fHelp)
     CTxDestination dest = DecodeDestination(strAddress);
     if (!IsValidDestination(dest))
     {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Bitcoin address");
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid Diskcoin address");
     }
     const CKeyID *keyID = boost::get<CKeyID>(&dest);
     if (!keyID)
@@ -753,7 +753,7 @@ UniValue dumpwallet(const UniValue &params, bool fHelp)
             "\nDumps all wallet keys in a human-readable format to a server-side file. This does not allow overwriting "
             "existing files.\n"
             "\nArguments:\n"
-            "1. \"filename\"    (string, required) The filename with path (either absolute or relative to bitcoind)\n"
+            "1. \"filename\"    (string, required) The filename with path (either absolute or relative to diskcoind)\n"
             "\nResult:\n"
             "{                           (json object)\n"
             "  \"filename\" : {        (string) The filename with full absolute path\n"

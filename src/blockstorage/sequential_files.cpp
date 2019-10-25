@@ -6,8 +6,7 @@
 
 #include "sequential_files.h"
 
-#include "blockstorage.h"
-
+#include "main.h"
 
 extern bool AbortNode(CValidationState &state, const std::string &strMessage, const std::string &userMessage = "");
 extern bool fCheckForPruning;
@@ -24,7 +23,7 @@ fs::path GetBlockPosFilename(const CDiskBlockPos &pos, const char *prefix)
 FILE *OpenDiskFile(const CDiskBlockPos &pos, const char *prefix, bool fReadOnly)
 {
     if (pos.IsNull())
-        return nullptr;
+        return NULL;
     fs::path path = GetBlockPosFilename(pos, prefix);
     fs::create_directories(path.parent_path());
     FILE *file = fsbridge::fopen(path, "rb+");
@@ -33,7 +32,7 @@ FILE *OpenDiskFile(const CDiskBlockPos &pos, const char *prefix, bool fReadOnly)
     if (!file)
     {
         LOGA("Unable to open file %s\n", path.string());
-        return nullptr;
+        return NULL;
     }
     if (pos.nPos)
     {
@@ -41,7 +40,7 @@ FILE *OpenDiskFile(const CDiskBlockPos &pos, const char *prefix, bool fReadOnly)
         {
             LOGA("Unable to seek to position %u of %s\n", pos.nPos, path.string());
             fclose(file);
-            return nullptr;
+            return NULL;
         }
     }
     return file;
@@ -133,10 +132,12 @@ bool ReadBlockFromDiskSequential(CBlock &block, const CDiskBlockPos &pos, const 
     }
 
     // Check the header
-    if (!CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
+    // if (!CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
+    if (!CheckProofOfCapacity(block.GetHash(), consensusParams))
     {
-        return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
+        return error("Read111BlockFromDisk: Errors in block header at %s, height %llu %s", pos.ToString(), block.GetHeight(), block.GetHash().GetHex());
     }
+    LOGA("ReadBlockFromDisk at %s, height %llu %s", pos.ToString(), block.GetHeight(), block.GetHash().GetHex());
     return true;
 }
 
@@ -196,7 +197,7 @@ void FindFilesToPruneSequential(std::set<int> &setFilesToPrune, uint64_t nLastBl
     // We don't check to prune until after we've allocated new space for files
     // So we should leave a buffer under our target to account for another allocation
     // before the next pruning.
-    uint64_t nBuffer = blockfile_chunk_size + undofile_chunk_size;
+    uint64_t nBuffer = BLOCKFILE_CHUNK_SIZE + UNDOFILE_CHUNK_SIZE;
     uint64_t nBytesToPrune;
     int count = 0;
 

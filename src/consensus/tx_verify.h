@@ -1,5 +1,4 @@
 // Copyright (c) 2017-2017 The Bitcoin Core developers
-// Copyright (c) 2017-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -71,7 +70,5 @@ bool EvaluateSequenceLocks(const CBlockIndex &block, std::pair<int, int64_t> loc
  * Consensus critical. Takes as input a list of heights at which tx's inputs (in order) confirmed.
  */
 bool SequenceLocks(const CTransactionRef &tx, int flags, std::vector<int> *prevHeights, const CBlockIndex &block);
-
-uint64_t GetTransactionSigOpCount(const CTransaction &tx, const CCoinsViewCache &coins, const uint32_t flags);
 
 #endif // BITCOIN_CONSENSUS_TX_VERIFY_H

@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,7 +11,7 @@
 #include "arith_uint256.h"
 #include "chainparamsbase.h"
 #include "fs.h"
-#include "hashwrapper.h"
+#include "hash.h"
 #include "primitives/block.h"
 #include "rpc/client.h"
 #include "rpc/protocol.h"
@@ -21,8 +21,6 @@
 #include "utilstrencodings.h"
 
 #include <cstdlib>
-#include <functional>
-#include <random>
 #include <stdio.h>
 
 #include <event2/buffer.h>
@@ -32,27 +30,23 @@
 
 #include <univalue.h>
 
-
-// below two require C++11
-#include <functional>
-#include <random>
+using namespace std;
 
 #ifdef DEBUG_LOCKORDER
-LockData lockdata;
+#include <boost/thread/tss.hpp>
+// BU add lockstack stuff here for bitcoin-cli, because I need to carefully
+// order it in globals.cpp for bitcoind and bitcoin-qt
+boost::mutex dd_mutex;
+std::map<std::pair<void *, void *>, LockStack> lockorders;
+boost::thread_specific_ptr<LockStack> lockstack;
 #endif
-
-// Lambda used to generate entropy, per-thread (see CpuMiner, et al below)
-typedef std::function<uint32_t(void)> RandFunc;
-
-using namespace std;
 
 // Internal miner
 //
-// ScanHash increments nonces looking for a hash with at least some zero bits.
-// If found, it returns out and the caller is responsible for verifying if
-// the generated hash is below the difficulty target. The nonce is usually
-// preserved between calls, however periodically calling code rebuilds the block
-// and nNonce starts over at a random value.
+// ScanHash scans nonces looking for a hash with at least some zero bits.
+// The nonce is usually preserved between calls, but periodically or if the
+// nonce is 0xffff0000 or above, the block is rebuilt and nNonce starts over at
+// zero.
 bool static ScanHash(const CBlockHeader *pblock, uint32_t &nNonce, uint256 *phash)
 {
     // Write the first 76 bytes of the block header to a double-SHA256 state.
@@ -74,6 +68,10 @@ bool static ScanHash(const CBlockHeader *pblock, uint32_t &nNonce, uint256 *phas
         // caller will check if it has enough to reach the target
         if (((uint16_t *)phash)[15] == 0)
             return true;
+
+        // If nothing found after trying for a while, return -1
+        if ((nNonce & 0xfff) == 0)
+            return false;
     }
 }
 
@@ -85,23 +83,15 @@ public:
     {
         addHeader(_("Mining options:"))
             .addArg("blockversion=<n>", ::AllowedArgs::requiredInt,
-                _("Set the block version number. For testing only. Value must be an integer"))
+                _("Set the block version number. For testing only.  Value must be an integer"))
             .addArg("cpus=<n>", ::AllowedArgs::requiredInt,
-                _("Number of cpus to use for mining (default: 1). Value must be an integer"))
+                _("Number of cpus to use for mining (default: 1).  Value must be an integer"))
             .addArg("duration=<n>", ::AllowedArgs::requiredInt,
                 _("Number of seconds to mine a particular block candidate (default: 30). Value must be an integer"))
             .addArg("nblocks=<n>", ::AllowedArgs::requiredInt,
                 _("Number of blocks to mine (default: mine forever / -1). Value must be an integer"))
             .addArg("coinbasesize=<n>", ::AllowedArgs::requiredInt,
-                _("Get a fixed size coinbase Tx (default: do not use / 0). Value must be an integer"))
-            // requiredAmount here validates a float
-            .addArg("maxdifficulty=<f>", ::AllowedArgs::requiredAmount,
-                _("Set the maximum difficulty (default: no maximum) we will mine. If difficulty exceeds this value we "
-                  "sleep and poll every <duration> seconds until difficulty drops below this threshold. Value must be "
-                  "a float or integer"))
-            .addArg("address=<string>", ::AllowedArgs::requiredStr,
-                _("The address to send the newly generated bitcoin to. If omitted, will default to an address in the "
-                  "bitcoin daemon's wallet."));
+                _("Get a fixed size coinbase Tx (default: do not use / 0). Value must be an integer"));
     }
 };
 
@@ -157,10 +147,9 @@ static uint256 CalculateMerkleRoot(uint256 &coinbase_hash, const std::vector<uin
 
 static bool CpuMineBlockHasher(CBlockHeader *pblock,
     vector<unsigned char> &coinbaseBytes,
-    const std::vector<uint256> &merkleproof,
-    const RandFunc &randFunc)
+    const std::vector<uint256> &merkleproof)
 {
-    uint32_t nExtraNonce = randFunc(); // Grab random 4-bytes from thread-safe generator we were passed
+    uint32_t nExtraNonce = std::rand();
     uint32_t nNonce = pblock->nNonce;
     arith_uint256 hashTarget = arith_uint256().SetCompact(pblock->nBits);
     bool found = false;
@@ -173,7 +162,7 @@ static bool CpuMineBlockHasher(CBlockHeader *pblock,
         {
             ++nExtraNonce;
             // 48 - next in arr after Height. (Height in coinbase required for block.version=2):
-            *(uint32_t *)(pbytes + 48) = nExtraNonce;
+            *(unsigned int *)(pbytes + 48) = nExtraNonce;
             uint256 hash;
             CHash256().Write(pbytes, coinbaseBytes.size()).Finalize(hash.begin());
 
@@ -232,67 +221,16 @@ static double GetDifficulty(uint64_t nBits)
     return dDiff;
 }
 
-// trvially-constructible/copyable info for use in CpuMineBlock below to check if mining a stale block
-struct BlkInfo
+static UniValue CpuMineBlock(unsigned int searchDuration, const UniValue &params, bool &found)
 {
-    uint64_t prevCheapHash, nBits;
-};
-// Thread-safe version of above for the shared variable. We do it this way
-// because std::atomic<struct> isn't always available on all platforms.
-class SharedBlkInfo : protected BlkInfo
-{
-    mutable CCriticalSection lock;
-
-public:
-    void store(const BlkInfo &o)
-    {
-        LOCK(lock);
-        prevCheapHash = o.prevCheapHash;
-        nBits = o.nBits;
-    }
-    bool operator==(const BlkInfo &o) const
-    {
-        LOCK(lock);
-        return prevCheapHash == o.prevCheapHash && nBits == o.nBits;
-    }
-};
-// shared variable: used to inform all threads when the latest block or difficulty has changed
-static SharedBlkInfo sharedBlkInfo;
-
-static UniValue CpuMineBlock(unsigned int searchDuration, const UniValue &params, bool &found, const RandFunc &randFunc)
-{
-    UniValue ret(UniValue::VARR);
-    CBlockHeader header;
-    const double maxdiff = GetDoubleArg("-maxdifficulty", 0.0);
-    searchDuration *= 1000; // convert to millis
-
-    found = false;
-
-    header = CpuMinerJsonToHeader(params);
-
-    // save the prev block CheapHash & current difficulty to the global shared variable right away: this will
-    // potentially signal to other threads to return early if they are still mining on top of an old block (assumption
-    // here is that this block is the latest result from the RPC server, which is true 99.99999% of the time.)
-    const BlkInfo blkInfo = {header.hashPrevBlock.GetCheapHash(), header.nBits};
-    sharedBlkInfo.store(blkInfo);
-
-    // first check difficulty, and abort if it's lower than maxdifficulty from CLI
-    const double difficulty = GetDifficulty(header.nBits);
-
-    if (maxdiff > 0.0 && difficulty > maxdiff)
-    {
-        printf("Current difficulty: %3.2f > maxdifficulty: %3.2f, sleeping for %d seconds...\n", difficulty, maxdiff,
-            searchDuration / 1000);
-        MilliSleep(searchDuration);
-        return ret;
-    }
-
-    // ok, difficulty check passed or not applicable, proceed
     UniValue tmp(UniValue::VOBJ);
+    UniValue ret(UniValue::VARR);
     string tmpstr;
     std::vector<uint256> merkleproof;
+    CBlockHeader header;
     vector<unsigned char> coinbaseBytes(ParseHex(params["coinbase"].get_str()));
 
+    found = false;
 
     // re-create merkle branches:
     {
@@ -306,6 +244,8 @@ static UniValue CpuMineBlock(unsigned int searchDuration, const UniValue &params
         }
     }
 
+    header = CpuMinerJsonToHeader(params);
+
     // Set the version (only to test):
     {
         int blockversion = GetArg("-blockversion", header.nVersion);
@@ -314,13 +254,13 @@ static UniValue CpuMineBlock(unsigned int searchDuration, const UniValue &params
         header.nVersion = blockversion;
     }
 
-    uint32_t startNonce = header.nNonce = randFunc();
+    uint32_t startNonce = header.nNonce = std::rand();
 
     printf("Mining: id: %x parent: %s bits: %x difficulty: %3.2f time: %d\n", (unsigned int)params["id"].get_int64(),
-        header.hashPrevBlock.ToString().c_str(), header.nBits, difficulty, header.nTime);
+        header.hashPrevBlock.ToString().c_str(), header.nBits, GetDifficulty(header.nBits), header.nTime);
 
-    int64_t start = GetTimeMillis();
-    while ((GetTimeMillis() < start + searchDuration) && !found && sharedBlkInfo == blkInfo)
+    int64_t start = GetTime();
+    while ((GetTime() < start + searchDuration) && !found)
     {
         // When mining mainnet, you would normally want to advance the time to keep the block time as close to the
         // real time as possible.  However, this CPU miner is only useful on testnet and in testnet the block difficulty
@@ -328,21 +268,17 @@ static UniValue CpuMineBlock(unsigned int searchDuration, const UniValue &params
         // and the block will be rejected.  So do not advance time (let it be advanced by bitcoind every time we
         // request a new block).
         // header.nTime = (header.nTime < GetTime()) ? GetTime() : header.nTime;
-        found = CpuMineBlockHasher(&header, coinbaseBytes, merkleproof, randFunc);
+        found = CpuMineBlockHasher(&header, coinbaseBytes, merkleproof);
     }
-
-    const auto nChecked = header.nNonce - startNonce;
 
     // Leave if not found:
     if (!found)
     {
-        const auto elapsed = GetTimeMillis() - start;
-        printf("Checked %d possibilities in %ld secs, %3.3f MH/s\n", nChecked, elapsed / 1000,
-            (nChecked / 1e6) / (elapsed / 1e3));
+        printf("Checked %llu possibilities\n", (unsigned long long)(header.nNonce - startNonce));
         return ret;
     }
 
-    printf("Solution! Checked %d possibilities\n", nChecked);
+    printf("Solution! Checked %llu possibilities\n", (unsigned long long )(header.nNonce - startNonce));
 
     tmpstr = HexStr(coinbaseBytes.begin(), coinbaseBytes.end());
     tmp.pushKV("coinbase", tmpstr);
@@ -398,20 +334,9 @@ static UniValue RPCSubmitSolution(const UniValue &solution, int &nblocks)
 
 int CpuMiner(void)
 {
-    // Initialize random number generator lambda. This is per-thread and
-    // is thread-safe.  std::rand() is not thread-safe and can result
-    // in multiple threads doing redundant proof-of-work.
-    std::random_device rd;
-    // seed random number generator from system entropy source (implementation defined: usually HW)
-    std::default_random_engine e1(rd());
-    // returns a uniformly distributed random number in the inclusive range: [0, UINT_MAX]
-    std::uniform_int_distribution<uint32_t> uniformGen(0);
-    auto randFunc = [&](void) -> uint32_t { return uniformGen(e1); };
-
     int searchDuration = GetArg("-duration", 30);
     int nblocks = GetArg("-nblocks", -1); //-1 mine forever
     int coinbasesize = GetArg("-coinbasesize", 0);
-    std::string address = GetArg("-address", "");
 
     if (coinbasesize < 0)
     {
@@ -458,17 +383,6 @@ int CpuMiner(void)
                         if (coinbasesize > 0)
                         {
                             params.push_back(UniValue(coinbasesize));
-                        }
-                        if (!address.empty())
-                        {
-                            if (params.empty())
-                            {
-                                // param[0] must be coinbaseSize:
-                                // push null in position 0 to use server default coinbaseSize
-                                params.push_back(UniValue());
-                            }
-                            // this must be in position 1
-                            params.push_back(UniValue(address));
                         }
                         reply = CallRPC("getminingcandidate", params);
                     }
@@ -531,7 +445,7 @@ int CpuMiner(void)
         }
         catch (...)
         {
-            PrintExceptionContinue(nullptr, "CommandLineRPC()");
+            PrintExceptionContinue(NULL, "CommandLineRPC()");
             throw;
         }
 
@@ -547,7 +461,7 @@ int CpuMiner(void)
             else
             {
                 found = false;
-                mineresult = CpuMineBlock(searchDuration, result, found, randFunc);
+                mineresult = CpuMineBlock(searchDuration, result, found);
                 if (!found)
                 {
                     // printf("Mining did not succeed\n");
@@ -576,7 +490,7 @@ void static MinerThread()
         }
         catch (...)
         {
-            PrintExceptionContinue(nullptr, "CommandLineRPC()");
+            PrintExceptionContinue(NULL, "CommandLineRPC()");
         }
     }
 }
@@ -605,7 +519,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "AppInitRPC()");
+        PrintExceptionContinue(NULL, "AppInitRPC()");
         return EXIT_FAILURE;
     }
 
@@ -625,7 +539,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "CommandLineRPC()");
+        PrintExceptionContinue(NULL, "CommandLineRPC()");
     }
     return ret;
 }

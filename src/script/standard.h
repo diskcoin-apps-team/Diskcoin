@@ -70,7 +70,7 @@ public:
  *  * CNoDestination: no destination set
  *  * CKeyID: TX_PUBKEYHASH destination
  *  * CScriptID: TX_SCRIPTHASH destination
- *  A CTxDestination is the internal data type encoded in a bitcoin address
+ *  A CTxDestination is the internal data type encoded in a diskcoin address
  */
 typedef boost::variant<CNoDestination, CKeyID, CScriptID> CTxDestination;
 
@@ -92,5 +92,8 @@ CScript GetScriptForMultisig(int nRequired, const std::vector<CPubKey> &keys);
 CScript GetScriptForFreeze(CScriptNum nLockTime, const CPubKey &pubKey);
 CScript GetScriptLabelPublic(const std::string &labelPublic);
 
+//add for diskcoin -->
+std::string EncodeScriptPubKey (const CScript &scriptPubKey);
+//<--
 
 #endif // BITCOIN_SCRIPT_STANDARD_H

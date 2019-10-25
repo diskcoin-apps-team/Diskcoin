@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -41,6 +41,106 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
     CAmount nNet = nCredit - nDebit;
     uint256 hash = wtx.GetHash();
     std::map<std::string, std::string> mapValue = wtx.mapValue;
+
+    int iin, iout;
+    uint32_t type = wtx.GetPledgeType(iin, iout);
+    if (type == DCOP_PLEDGE)
+    {
+        CTxDestination v0_address;
+        CTxDestination v1_address;
+        CTxDestination v2_address;
+
+        isminetype mine0 = wallet->IsMine(wtx.vout[0]);
+
+        TransactionRecord sub0(hash, nTime);
+        sub0.idx = parts.size();
+        sub0.credit = wtx.vout[0].nValue;
+        sub0.involvesWatchAddress = mine0 & ISMINE_WATCH_ONLY;
+
+        if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && wallet->IsMine(v0_address)) &&
+            (ExtractDestination(wtx.vout[1].scriptPubKey, v1_address) && wallet->IsMine(v1_address)) )
+        {
+            sub0.type = TransactionRecord::StakeIn;
+        }
+        else if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && wallet->IsMine(v0_address)) &&
+            (ExtractDestination(wtx.vout[1].scriptPubKey, v1_address) && !wallet->IsMine(v1_address)) )
+        {
+            sub0.type = TransactionRecord::StakeOut;
+        }
+        else if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && !wallet->IsMine(v0_address)) &&
+            (ExtractDestination(wtx.vout[1].scriptPubKey, v1_address) && wallet->IsMine(v1_address)) )
+        {
+            sub0.type = TransactionRecord::StakeFrom;
+        }
+        
+        sub0.addresses.push_back(std::make_pair(EncodeDestination(v0_address), wtx.vout[0].scriptPubKey));
+        parts.append(sub0);
+
+        isminetype mine1 = wallet->IsMine(wtx.vout[1]);
+
+        TransactionRecord sub1(hash, nTime);
+        sub1.idx = parts.size();
+        sub1.credit = wtx.vout[1].nValue;
+        sub1.involvesWatchAddress = mine1 & ISMINE_WATCH_ONLY;
+
+        if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && wallet->IsMine(v0_address)) &&
+            (ExtractDestination(wtx.vout[1].scriptPubKey, v1_address) && wallet->IsMine(v1_address)))
+        {
+            sub1.type = TransactionRecord::SendToSelf;
+        }
+        else if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && wallet->IsMine(v0_address)) &&
+            (ExtractDestination(wtx.vout[1].scriptPubKey, v1_address) && !wallet->IsMine(v1_address)))
+        {
+            sub1.type = TransactionRecord::SendToAddress;
+        }
+        else if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && !wallet->IsMine(v0_address)) &&
+            (ExtractDestination(wtx.vout[1].scriptPubKey, v1_address) && wallet->IsMine(v1_address)))
+        {
+            sub1.type = TransactionRecord::RecvWithAddress;
+        }
+        
+        sub1.addresses.push_back(std::make_pair(EncodeDestination(v1_address), wtx.vout[1].scriptPubKey));
+        parts.append(sub1);
+
+        if (wtx.vout.size() == 4)
+        {
+            isminetype mine2 = wallet->IsMine(wtx.vout[2]);
+
+            TransactionRecord sub2(hash, nTime);
+            sub2.idx = parts.size();
+            sub2.credit = wtx.vout[2].nValue;
+            sub2.involvesWatchAddress = mine2 & ISMINE_WATCH_ONLY;
+
+            if (ExtractDestination(wtx.vout[2].scriptPubKey, v2_address) && wallet->IsMine(v2_address))
+            {
+                sub2.type = TransactionRecord::SendToSelf;
+                sub2.addresses.push_back(std::make_pair(EncodeDestination(v2_address), wtx.vout[2].scriptPubKey));
+                parts.append(sub2);
+            }
+        }
+        
+        return parts;
+
+    } 
+    else if (type == DCOP_UNPLEDGE) 
+    {
+        CTxDestination v0_address;
+        isminetype mine0 = wallet->IsMine(wtx.vout[0]);
+
+        TransactionRecord sub0(hash, nTime);
+        sub0.idx = parts.size();
+        sub0.credit = wtx.vout[0].nValue;
+        sub0.involvesWatchAddress = mine0 & ISMINE_WATCH_ONLY;
+
+        if ((ExtractDestination(wtx.vout[0].scriptPubKey, v0_address) && wallet->IsMine(v0_address)))
+        {
+            sub0.type = TransactionRecord::UnStake;
+            sub0.addresses.push_back(std::make_pair(EncodeDestination(v0_address), wtx.vout[0].scriptPubKey));
+            parts.append(sub0);
+        }
+
+        return parts;
+    }
 
     if (nNet > 0 || wtx.IsCoinBase())
     {

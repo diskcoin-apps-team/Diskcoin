@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Copyright (c) 2017 The Bitcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -690,7 +690,9 @@ DBErrors CWalletDB::LoadWallet(CWallet *pwallet)
 
             // Try to be tolerant of single corrupt records:
             string strType, strErr;
-            if (!ReadKeyValue(pwallet, ssKey, ssValue, wss, strType, strErr))
+            bool xx = ReadKeyValue(pwallet, ssKey, ssValue, wss, strType, strErr);
+            LOGA("read keyval %s:%s type=%s, ret=%d, err=%s\n", ssKey.str(), ssValue.str(), strType, xx, strErr);
+            if (!xx)
             {
                 // losing keys is considered a catastrophic error, anything else
                 // we assume the user can live with:

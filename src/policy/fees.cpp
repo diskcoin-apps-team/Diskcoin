@@ -1,6 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -318,7 +317,7 @@ void CBlockPolicyEstimator::removeTx(uint256 hash)
     unsigned int entryHeight = pos->second.blockHeight;
     unsigned int bucketIndex = pos->second.bucketIndex;
 
-    if (stats != nullptr)
+    if (stats != NULL)
         stats->removeTx(entryHeight, nBestSeenHeight, bucketIndex);
     mapMemPoolTxs.erase(hash);
 }
@@ -372,7 +371,7 @@ void CBlockPolicyEstimator::processTransaction(const CTxMemPoolEntry &entry, boo
 {
     unsigned int txHeight = entry.GetHeight();
     uint256 hash = entry.GetTx().GetHash();
-    if (mapMemPoolTxs[hash].stats != nullptr)
+    if (mapMemPoolTxs[hash].stats != NULL)
     {
         LOG(ESTIMATEFEE, "Blockpolicy error mempool tx %s already being tracked\n", hash.ToString().c_str());
         return;
@@ -544,7 +543,7 @@ CFeeRate CBlockPolicyEstimator::estimateFee(int confTarget)
 
 CFeeRate CBlockPolicyEstimator::estimateSmartFee(int confTarget, int *answerFoundAtTarget, const CTxMemPool &pool)
 {
-    AssertLockHeld(pool.cs_txmempool);
+    AssertLockHeld(pool.cs);
     if (answerFoundAtTarget)
         *answerFoundAtTarget = confTarget;
     // Return failure if trying to analyze a target we're not tracking
@@ -582,7 +581,7 @@ double CBlockPolicyEstimator::estimatePriority(int confTarget)
 
 double CBlockPolicyEstimator::estimateSmartPriority(int confTarget, int *answerFoundAtTarget, const CTxMemPool &pool)
 {
-    AssertLockHeld(pool.cs_txmempool);
+    AssertLockHeld(pool.cs);
     if (answerFoundAtTarget)
         *answerFoundAtTarget = confTarget;
     // Return failure if trying to analyze a target we're not tracking

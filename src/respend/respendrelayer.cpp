@@ -1,5 +1,4 @@
 // Copyright (c) 2018 The Bitcoin developers
-// Copyright (c) 2018-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -36,7 +35,7 @@ public:
     {
         unsigned int size = pDoubleSpend->GetTxSize();
 
-        std::lock_guard<std::mutex> lock(cs_relayLimiter);
+        std::lock_guard<std::mutex> lock(cs);
         int64_t limit = GetArg("-limitrespendrelay", DEFAULT_LIMITRESPENDRELAY);
         if (RateLimitExceeded(respendCount, lastRespendTime, limit, size))
         {
@@ -51,7 +50,7 @@ public:
 private:
     double respendCount;
     int64_t lastRespendTime;
-    std::mutex cs_relayLimiter;
+    std::mutex cs;
 };
 
 } // ns anon

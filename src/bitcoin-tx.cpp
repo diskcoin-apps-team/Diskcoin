@@ -1,5 +1,4 @@
 // Copyright (c) 2009-2015 The Bitcoin developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -30,11 +29,16 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/assign/list_of.hpp>
 
-#ifdef DEBUG_LOCKORDER
-LockData lockdata;
-#endif
-
 using namespace std;
+
+#ifdef DEBUG_LOCKORDER
+#include <boost/thread/tss.hpp>
+// BU add lockstack stuff here for bitcoin-cli, because I need to carefully
+// order it in globals.cpp for bitcoind and bitcoin-qt
+boost::mutex dd_mutex;
+std::map<std::pair<void *, void *>, LockStack> lockorders;
+boost::thread_specific_ptr<LockStack> lockstack;
+#endif
 
 static bool fCreateBlank;
 static map<string, UniValue> registers;
@@ -77,15 +81,15 @@ static int AppInitRawTx(int argc, char *argv[])
     {
         // First part of help message is specific to this utility
         std::string strUsage =
-            strprintf(_("%s bitcoin-tx utility version"), _(PACKAGE_NAME)) + " " + FormatFullVersion() + "\n";
+            strprintf(_("%s diskcoin-tx utility version"), _(PACKAGE_NAME)) + " " + FormatFullVersion() + "\n";
 
         fprintf(stdout, "%s", strUsage.c_str());
 
         if (mapArgs.count("-version"))
             return false;
 
-        strUsage = "\n" + _("Usage:") + "\n" + "  bitcoin-tx [options] <hex-tx> [commands]  " +
-                   _("Update hex-encoded bitcoin transaction") + "\n" + "  bitcoin-tx [options] -create [commands]   " +
+        strUsage = "\n" + _("Usage:") + "\n" + "  diskcoin-tx [options] <hex-tx> [commands]  " +
+                   _("Update hex-encoded bitcoin transaction") + "\n" + "  diskcoin-tx [options] -create [commands]   " +
                    _("Create hex-encoded bitcoin transaction") + "\n" + "\n";
 
         fprintf(stdout, "%s", strUsage.c_str());
@@ -615,7 +619,10 @@ static void MutateTx(CMutableTransaction &tx, const string &command, const strin
 
     else if (command == "sign")
     {
-        ecc.reset(new Secp256k1Init());
+        if (!ecc)
+        {
+            ecc.reset(new Secp256k1Init());
+        }
         MutateTxSign(tx, commandVal);
     }
 
@@ -750,7 +757,7 @@ static int CommandLineRawTx(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "CommandLineRawTx()");
+        PrintExceptionContinue(NULL, "CommandLineRawTx()");
         throw;
     }
 
@@ -778,7 +785,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "AppInitRawTx()");
+        PrintExceptionContinue(NULL, "AppInitRawTx()");
         return EXIT_FAILURE;
     }
 
@@ -793,7 +800,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "CommandLineRawTx()");
+        PrintExceptionContinue(NULL, "CommandLineRawTx()");
     }
     return ret;
 }

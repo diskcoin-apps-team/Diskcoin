@@ -1,7 +1,3 @@
-// Copyright (c) 2015-2018 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #ifndef _BITCOIN_PREVECTOR_H_
 #define _BITCOIN_PREVECTOR_H_
 
@@ -528,7 +524,7 @@ public:
         if (!is_direct())
         {
             free(_union.indirect);
-            _union.indirect = nullptr;
+            _union.indirect = NULL;
         }
     }
 

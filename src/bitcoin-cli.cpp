@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -27,11 +27,17 @@
 
 #include <univalue.h>
 
+using namespace std;
+
 #ifdef DEBUG_LOCKORDER
-LockData lockdata;
+#include <boost/thread/tss.hpp>
+// BU add lockstack stuff here for bitcoin-cli, because I need to carefully
+// order it in globals.cpp for bitcoind and bitcoin-qt
+boost::mutex dd_mutex;
+std::map<std::pair<void *, void *>, LockStack> lockorders;
+boost::thread_specific_ptr<LockStack> lockstack;
 #endif
 
-using namespace std;
 
 int CommandLineRPC(int argc, char *argv[])
 {
@@ -56,12 +62,7 @@ int CommandLineRPC(int argc, char *argv[])
         if (args.size() < 1)
             throw runtime_error("too few parameters (need at least command)");
         std::string strMethod = args[0];
-        UniValue params(UniValue::VARR);
-        for (unsigned int idx = 1; idx < args.size(); idx++)
-        {
-            const std::string &strVal = args[idx];
-            params.push_back(strVal);
-        }
+        UniValue params = RPCConvertValues(strMethod, std::vector<std::string>(args.begin() + 1, args.end()));
 
         // Execute and handle connection failures with -rpcwait
         const bool fWait = GetBoolArg("-rpcwait", false);
@@ -126,7 +127,7 @@ int CommandLineRPC(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "CommandLineRPC()");
+        PrintExceptionContinue(NULL, "CommandLineRPC()");
         throw;
     }
 
@@ -139,6 +140,10 @@ int CommandLineRPC(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    //add for diskcoin -->
+    g_argv = argv;
+    g_argc = argc;
+    //<--
     SetupEnvironment();
     if (!SetupNetworking())
     {
@@ -148,7 +153,7 @@ int main(int argc, char *argv[])
 
     try
     {
-        std::string appname("bitcoin-cli");
+        std::string appname("diskcoin-cli");
         std::string usage = "\n" + _("Usage:") + "\n" + "  " + appname + " [options] " +
                             strprintf(_("Send command to %s"), _(PACKAGE_NAME)) + "\n" + "  " + appname +
                             " [options] help                " + _("List commands") + "\n" + "  " + appname +
@@ -165,7 +170,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "AppInitRPC()");
+        PrintExceptionContinue(NULL, "AppInitRPC()");
         return EXIT_FAILURE;
     }
 
@@ -180,7 +185,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "CommandLineRPC()");
+        PrintExceptionContinue(NULL, "CommandLineRPC()");
     }
     return ret;
 }

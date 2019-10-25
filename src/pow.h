@@ -23,7 +23,6 @@ unsigned int CalculateNextWorkRequired(const CBlockIndex *pindexLast,
 
 /** Check whether a block hash satisfies the proof-of-work requirement specified by nBits */
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params &);
-/** Get block's work: that is the work equivalent for the nBits of difficulty specified in this block */
 arith_uint256 GetBlockProof(const CBlockIndex &block);
 
 /** Return the time it would take to redo the work difference between from and to, assuming the current hashrate
@@ -39,5 +38,14 @@ int64_t GetBlockProofEquivalentTime(const CBlockIndex &to,
 uint32_t GetNextCashWorkRequired(const CBlockIndex *pindexPrev,
     const CBlockHeader *pblock,
     const Consensus::Params &params);
+
+// diskcoin
+void CalculateSignature(const CBlockIndex *pindex, unsigned char* sig);
+uint64_t CalculateBaseTarget(const CBlockIndex *pindex);
+uint64_t CalculateBest(int height, const unsigned char* gen_sig, uint64_t plotter_id, uint64_t nonce);
+
+bool CheckProofOfCapacity(uint256 hash, const Consensus::Params &params);
+bool CheckHeaderProofOfCapacity(const CBlockHeader &header, const Consensus::Params &params);
+
 
 #endif // BITCOIN_POW_H

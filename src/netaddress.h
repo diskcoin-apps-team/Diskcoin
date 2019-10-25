@@ -23,9 +23,7 @@ extern const unsigned char pchIPv4[12];
 enum
 {
     IPV6_ADDR_SCOPE_RESERVED = 0x0,
-#ifndef IPV6_ADDR_SCOPE_GLOBAL // Already defined on Android platforms
     IPV6_ADDR_SCOPE_GLOBAL = 0x0e,
-#endif
 };
 
 enum Network
@@ -88,7 +86,7 @@ public:
     uint64_t GetHash() const;
     bool GetInAddr(struct in_addr *pipv4Addr) const;
     std::vector<unsigned char> GetGroup() const;
-    int GetReachabilityFrom(const CNetAddr *paddrPartner = nullptr) const;
+    int GetReachabilityFrom(const CNetAddr *paddrPartner = NULL) const;
 
     bool GetIn6Addr(struct in6_addr *pipv6Addr) const;
 

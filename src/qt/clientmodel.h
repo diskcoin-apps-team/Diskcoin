@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -69,6 +69,9 @@ public:
     //! Return the dynamic memory usage of the mempool
     size_t getMempoolDynamicUsage() const;
 
+    //! BU: Return the transactions per second that are accepted into the mempool
+    double getTransactionsPerSecond() const;
+
     quint64 getTotalBytesRecv() const;
     quint64 getTotalBytesSent() const;
 
@@ -105,7 +108,6 @@ private:
 
     QTimer *pollTimer1;
     QTimer *pollTimer2;
-    QTimer *pollTimer3;
 
     void subscribeToCoreSignals();
     void unsubscribeFromCoreSignals();
@@ -118,7 +120,7 @@ Q_SIGNALS:
     void orphanPoolSizeChanged(long count);
     void alertsChanged(const QString &warnings);
     void bytesChanged(quint64 totalBytesIn, quint64 totalBytesOut);
-    void transactionsPerSecondChanged(double smoothedTps, double instantaneousTps, double peakTps);
+    void transactionsPerSecondChanged(double tansactionsPerSecond); // BU:
     void thinBlockPropagationStatsChanged(const ThinBlockQuickStats &thin);
     void compactBlockPropagationStatsChanged(const CompactBlockQuickStats &compact);
     void grapheneBlockPropagationStatsChanged(const GrapheneQuickStats &graphene);
@@ -132,7 +134,6 @@ Q_SIGNALS:
 public Q_SLOTS:
     void updateTimer1();
     void updateTimer2();
-    void updateTimerTransactionRate();
     void updateNumConnections(int numConnections);
     void updateAlert();
     void updateBanlist();

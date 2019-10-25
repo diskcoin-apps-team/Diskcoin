@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,7 +10,6 @@
 #include "arith_uint256.h"
 #include "pow.h"
 #include "primitives/block.h"
-#include "sync.h"
 #include "tinyformat.h"
 #include "uint256.h"
 #include "util.h"
@@ -18,7 +17,10 @@
 #include <atomic>
 #include <vector>
 
-extern CSharedCriticalSection cs_mapBlockIndex;
+// diskcoin
+// const uint64_t MAX_BASE_TARGET = 18325193796;
+// const uint64_t MAX_BASE_TARGET = 293203100740;
+const std::string FUND_PUB_ADDRESS = "3EErkWf7PwsWeMLg1dgMpPmBTWvP1ND6HP";
 
 class CBlockFileInfo
 {
@@ -199,7 +201,13 @@ public:
     uint256 hashMerkleRoot;
     unsigned int nTime;
     unsigned int nBits;
-    unsigned int nNonce;
+
+    // diskcoin
+    unsigned char sig[32];
+    uint64_t nBaseTarget;
+    uint64_t nPlotterId;
+    uint64_t nNonce;
+    uint64_t nDeadline;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     uint32_t nSequenceId;
@@ -207,9 +215,9 @@ public:
 
     void SetNull()
     {
-        phashBlock = nullptr;
-        pprev = nullptr;
-        pskip = nullptr;
+        phashBlock = NULL;
+        pprev = NULL;
+        pskip = NULL;
         nHeight = 0;
         nFile = 0;
         nDataPos = 0;
@@ -225,6 +233,12 @@ public:
         nTime = 0;
         nBits = 0;
         nNonce = 0;
+        
+        // diskcoin
+        nBaseTarget = 0;
+        nPlotterId = 0;
+        nDeadline = 0;
+        memset(sig, 0x00, 32);
     }
 
     CBlockIndex() { SetNull(); }
@@ -237,6 +251,12 @@ public:
         nTime = block.nTime;
         nBits = block.nBits;
         nNonce = block.nNonce;
+
+        // diskcoin
+        nBaseTarget = block.nBaseTarget;
+        nPlotterId = block.nPlotterId;
+        nDeadline = block.nDeadline;
+        memcpy(sig, block.sig, sizeof(sig));
     }
 
     CDiskBlockPos GetBlockPos() const
@@ -271,6 +291,13 @@ public:
         block.nTime = nTime;
         block.nBits = nBits;
         block.nNonce = nNonce;
+        
+        // diskcoin
+        block.nBaseTarget = nBaseTarget;
+        block.nPlotterId = nPlotterId;
+        block.nDeadline = nDeadline;
+        memcpy(block.sig, sig, sizeof(sig));
+        
         return block;
     }
 
@@ -337,7 +364,6 @@ public:
     //! Returns true if the validity was changed.
     bool RaiseValidity(enum BlockStatus nUpTo)
     {
-        AssertWriteLockHeld(cs_mapBlockIndex);
         assert(!(nUpTo & ~BLOCK_VALID_MASK)); // Only validity flags allowed.
         if (nStatus & BLOCK_FAILED_MASK)
             return false;
@@ -408,6 +434,15 @@ public:
         READWRITE(nTime);
         READWRITE(nBits);
         READWRITE(nNonce);
+
+        // diskcoin
+        READWRITE(nBaseTarget);
+        READWRITE(nPlotterId);
+        READWRITE(nDeadline);
+        for(int i=0; i<sizeof(sig); i++)
+        {
+			READWRITE(sig[i]);
+        }
     }
 
     uint256 GetBlockHash() const
@@ -419,6 +454,13 @@ public:
         block.nTime = nTime;
         block.nBits = nBits;
         block.nNonce = nNonce;
+
+		// diskcoin
+		block.nBaseTarget = nBaseTarget;
+		block.nPlotterId = nPlotterId;
+		block.nDeadline = nDeadline;
+		memcpy(block.sig, sig, sizeof(sig));
+        
         return block.GetHash();
     }
 
@@ -444,15 +486,15 @@ private:
 
 public:
     CChain() : tip(nullptr) {}
-    /** Returns the index entry for the genesis block of this chain, or nullptr if none. */
-    CBlockIndex *Genesis() const { return vChain.size() > 0 ? vChain[0] : nullptr; }
-    /** Returns the index entry for the tip of this chain, or nullptr if none.  Does not require cs_main. */
+    /** Returns the index entry for the genesis block of this chain, or NULL if none. */
+    CBlockIndex *Genesis() const { return vChain.size() > 0 ? vChain[0] : NULL; }
+    /** Returns the index entry for the tip of this chain, or NULL if none.  Does not require cs_main. */
     CBlockIndex *Tip() const { return tip; }
-    /** Returns the index entry at a particular height in this chain, or nullptr if no such height exists. */
+    /** Returns the index entry at a particular height in this chain, or NULL if no such height exists. */
     CBlockIndex *operator[](int nHeight) const
     {
         if (nHeight < 0 || nHeight >= (int)vChain.size())
-            return nullptr;
+            return NULL;
         return vChain[nHeight];
     }
 
@@ -470,7 +512,7 @@ public:
         return (*this)[pindex->nHeight] == pindex;
     }
 
-    /** Find the successor of a block in this chain, or nullptr if the given index is not found or is the tip. */
+    /** Find the successor of a block in this chain, or NULL if the given index is not found or is the tip. */
     CBlockIndex *Next(const CBlockIndex *pindex) const
     {
         if (Contains(pindex))
@@ -485,10 +527,16 @@ public:
     void SetTip(CBlockIndex *pindex);
 
     /** Return a CBlockLocator that refers to a block in this chain (by default the tip). */
-    CBlockLocator GetLocator(const CBlockIndex *pindex = nullptr) const;
+    CBlockLocator GetLocator(const CBlockIndex *pindex = NULL) const;
 
     /** Find the last common block between this chain and a block index entry. */
     const CBlockIndex *FindFork(const CBlockIndex *pindex) const;
+
+    /** diskcoin: get current height baseTarget. */
+    uint64_t GetBaseTarget();
+
+    /** diskcoin: get current height generationSignature. */
+    const unsigned char* GetGenerationSignature();
 };
 
 #endif // BITCOIN_CHAIN_H

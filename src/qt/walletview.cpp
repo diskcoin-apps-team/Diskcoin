@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -124,8 +124,8 @@ void WalletView::setWalletModel(WalletModel *_walletModel)
     overviewPage->setWalletModel(_walletModel);
     receiveCoinsPage->setModel(_walletModel);
     sendCoinsPage->setModel(_walletModel);
-    usedReceivingAddressesPage->setModel(_walletModel ? _walletModel->getAddressTableModel() : nullptr);
-    usedSendingAddressesPage->setModel(_walletModel ? _walletModel->getAddressTableModel() : nullptr);
+    usedReceivingAddressesPage->setModel(_walletModel->getAddressTableModel());
+    usedSendingAddressesPage->setModel(_walletModel->getAddressTableModel());
 
     if (_walletModel)
     {
@@ -227,8 +227,7 @@ void WalletView::encryptWallet(bool status)
 
 void WalletView::backupWallet()
 {
-    QString filename =
-        GUIUtil::getSaveFileName(this, tr("Backup Wallet"), QString(), tr("Wallet Data (*.dat)"), nullptr);
+    QString filename = GUIUtil::getSaveFileName(this, tr("Backup Wallet"), QString(), tr("Wallet Data (*.dat)"), NULL);
 
     if (filename.isEmpty())
         return;

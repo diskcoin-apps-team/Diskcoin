@@ -16,7 +16,7 @@
  * for both bitcoind and bitcoin-core, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
-const std::string CLIENT_NAME("BUCash");
+const std::string CLIENT_NAME("Diskcoin");
 
 // BU added
 /**
@@ -24,11 +24,6 @@ const std::string CLIENT_NAME("BUCash");
  * this can be used to hide
  */
 std::string subverOverride("");
-
-/**
- * Tweak to turn on/off the display of node architecture on subver string
- */
-bool fDisplayArchInSubver = true;
 
 // BU move instantiation to a single file
 const int CLIENT_VERSION = 1000000 * CLIENT_VERSION_MAJOR + 10000 * CLIENT_VERSION_MINOR +
@@ -61,10 +56,11 @@ const int CLIENT_VERSION = 1000000 * CLIENT_VERSION_MAJOR + 10000 * CLIENT_VERSI
 #include "build.h"
 #endif
 
-//! git will put "#define GIT_ARCHIVE 1" on the next line inside archives. $Format:%n#define GIT_ARCHIVE 1$
+//! git will put "#define GIT_ARCHIVE 1" on the next line inside archives. 
+#define GIT_ARCHIVE 1
 #ifdef GIT_ARCHIVE
-#define GIT_COMMIT_ID "$Format:%h$"
-#define GIT_COMMIT_DATE "$Format:%cD$"
+#define GIT_COMMIT_ID "61635546ed"
+#define GIT_COMMIT_DATE "Wed, 24 Apr 2019 08:30:17 -0400"
 #endif
 
 #define BUILD_DESC_WITH_SUFFIX(maj, min, rev, build, suffix) \
@@ -121,42 +117,17 @@ std::string FormatSubVersion(const std::string &name, int nClientVersion, const 
     if (!subverOverride.empty())
         return subverOverride;
 
-    std::vector<std::string> uacomments = mapMultiArgs["-uacomment"];
-
-    // If this is a 32bit build then append an identifier since we'd like to know
-    // how many still run this configuration.
-    // We are going to put it at the front of uacomments so it immediately
-    // follows the EB/AD parameters and won't get truncated
-    {
-        int temp = 0;
-        int *ptemp = &temp;
-        std::string arch = (sizeof(ptemp) == 4) ? "32bit" : "64bit";
-        if (fDisplayArchInSubver)
-        {
-            uacomments.insert(std::begin(uacomments), arch);
-        }
-    }
-
-    std::vector<std::string> vTotComments = comments;
-    vTotComments.insert(std::end(vTotComments), std::begin(uacomments), std::end(uacomments));
-
     std::ostringstream ss;
     ss << "/";
     ss << name << ":" << FormatVersion(nClientVersion);
-    if (!vTotComments.empty())
+    if (!comments.empty())
     {
-        std::vector<std::string>::const_iterator it(vTotComments.begin());
+        std::vector<std::string>::const_iterator it(comments.begin());
         ss << "(" << *it;
-        for (++it; it != vTotComments.end(); ++it)
+        for (++it; it != comments.end(); ++it)
             ss << "; " << *it;
         ss << ")";
     }
     ss << "/";
-
-    std::string subver = ss.str();
-    if (subver.size() > MAX_SUBVERSION_LENGTH)
-    {
-        subver = subver.substr(0, MAX_SUBVERSION_LENGTH - 2) + ")/";
-    }
-    return subver;
+    return ss.str();
 }

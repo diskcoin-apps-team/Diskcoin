@@ -1,10 +1,10 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include "blockstorage.h"
+#include "blockstorage/blockstorage.h"
 
 #include "blockleveldb.h"
 #include "chainparams.h"
@@ -24,8 +24,6 @@ extern std::multimap<CBlockIndex *, CBlockIndex *> mapBlocksUnlinked;
 extern CTweak<uint64_t> pruneIntervalTweak;
 
 CDatabaseAbstract *pblockdb = nullptr;
-unsigned int blockfile_chunk_size = DEFAULT_BLOCKFILE_CHUNK_SIZE;
-unsigned int undofile_chunk_size = DEFAULT_UNDOFILE_CHUNK_SIZE;
 
 /**
   * Config param to determine what DB type we are using
@@ -200,6 +198,13 @@ void SyncStorage(const CChainParams &chainparams)
                 pindexNew->nNonce = item.second.nNonce;
                 pindexNew->nStatus = item.second.nStatus;
                 pindexNew->nTx = item.second.nTx;
+                // add for diskcoin -->
+                pindexNew->nBaseTarget = item.second.nBaseTarget;
+				pindexNew->nPlotterId = item.second.nPlotterId;
+				pindexNew->nDeadline = item.second.nDeadline;
+				memcpy(pindexNew->sig, item.second.sig, sizeof(item.second.sig));
+                // <--
+                
                 index = pindexNew;
             }
 
@@ -288,7 +293,7 @@ void SyncStorage(const CChainParams &chainparams)
                 {
                     pblockdbsync->EraseBlock(removeIndex);
                 }
-                // you must use nullptr here, not nullptr
+                // you must use NULL here, not nullptr
                 CBlockIndex *indexfront = blocksToRemove.front();
                 std::ostringstream frontkey;
                 frontkey << indexfront->GetBlockTime() << ":" << indexfront->GetBlockHash().ToString();
@@ -374,6 +379,12 @@ void SyncStorage(const CChainParams &chainparams)
                 pindexNew->nNonce = item.second.nNonce;
                 pindexNew->nStatus = item.second.nStatus;
                 pindexNew->nTx = item.second.nTx;
+                // add for diskcoin -->
+                pindexNew->nBaseTarget = item.second.nBaseTarget;
+				pindexNew->nPlotterId = item.second.nPlotterId;
+				pindexNew->nDeadline = item.second.nDeadline;
+				memcpy(pindexNew->sig, item.second.sig, sizeof(item.second.sig));
+                // <--
                 index = pindexNew;
             }
 
@@ -473,6 +484,11 @@ bool ReadBlockFromDisk(CBlock &block, const CBlockIndex *pindex, const Consensus
             return error("ReadBlockFromDisk(CBlock&, CBlockIndex*): GetHash() doesn't match index for %s at %s",
                 pindex->ToString(), pindex->GetBlockPos().ToString());
         }
+        if ((pindex->nStatus & BLOCK_FAILED_MASK) && pindex->nHeight >= 13500 && pindex->nHeight < 27000) { //
+            CValidationState state;
+            ReconsiderBlock(state, (CBlockIndex *)pindex);
+            LOGAF("reconsider1 h=%d", pindex->nHeight);
+        }
         return true;
     }
     block.SetNull();
@@ -486,6 +502,15 @@ bool ReadBlockFromDisk(CBlock &block, const CBlockIndex *pindex, const Consensus
         return error("ReadBlockFromDisk(CBlock&, CBlockIndex*): GetHash() doesn't match index for %s at %s",
             pindex->ToString(), pindex->GetBlockPos().ToString());
     }
+    if ((pindex->nStatus & BLOCK_FAILED_MASK) && pindex->nHeight >= 13500 && pindex->nHeight < 27000) { //
+        CValidationState state;
+        ReconsiderBlock(state, (CBlockIndex *)pindex);
+            LOGAF("reconsider2 h=%d", pindex->nHeight);
+    }
+    // if ((pindex->nStatus & BLOCK_FAILED_MASK) && Params().NetworkIDString()=="regtest") { //
+    //     CValidationState state;
+    //     ReconsiderBlock(state, (CBlockIndex *)pindex);
+    // }
     return true;
 }
 
@@ -527,7 +552,7 @@ void FindFilesToPrune(std::set<int> &setFilesToPrune, uint64_t nPruneAfterHeight
 {
     LOCK2(cs_main, cs_LastBlockFile);
 
-    if (chainActive.Tip() == nullptr || nPruneTarget == 0)
+    if (chainActive.Tip() == NULL || nPruneTarget == 0)
     {
         return;
     }
@@ -572,7 +597,7 @@ bool FlushStateToDiskInternal(CValidationState &state,
     static int64_t nLastWrite = 0;
     static int64_t nLastFlush = 0;
     static int64_t nLastSetChain = 0;
-    int64_t nNow = GetStopwatchMicros();
+    int64_t nNow = GetTimeMicros();
     // Avoid writing/flushing immediately after startup.
     if (nLastWrite == 0)
     {
@@ -594,9 +619,8 @@ bool FlushStateToDiskInternal(CValidationState &state,
     size_t cacheSize = pcoinsTip->DynamicMemoryUsage();
     static int64_t nSizeAfterLastFlush = 0;
     // The cache is close to the limit. Try to flush and trim.
-    bool fCacheCritical =
-        ((mode == FLUSH_STATE_IF_NEEDED) && (cacheSize > (size_t)nCoinCacheMaxSize)) ||
-        (!GetArg("-dbcache", 0) && cacheSize - nSizeAfterLastFlush > (int64_t)nMaxCacheIncreaseSinceLastFlush);
+    bool fCacheCritical = ((mode == FLUSH_STATE_IF_NEEDED) && (cacheSize > nCoinCacheMaxSize * 0.995)) ||
+                          (cacheSize - nSizeAfterLastFlush > (int64_t)nMaxCacheIncreaseSinceLastFlush);
     // It's been a while since we wrote the block index to disk. Do this frequently, so we don't need to redownload
     // after a crash.
     bool fPeriodicWrite =
@@ -605,9 +629,9 @@ bool FlushStateToDiskInternal(CValidationState &state,
     bool fPeriodicFlush =
         mode == FLUSH_STATE_PERIODIC && nNow > nLastFlush + (int64_t)DATABASE_FLUSH_INTERVAL * 1000000;
     // Combine all conditions that result in a full cache flush.
-    bool fDoFullFlush = (mode == FLUSH_STATE_ALWAYS) || fCacheCritical || fPeriodicFlush;
+    bool fDoFullFlush = (mode == FLUSH_STATE_ALWAYS) || fCacheCritical || fPeriodicFlush || fFlushForPrune;
     // Write blocks and block index to disk.
-    if (fDoFullFlush || fPeriodicWrite || fFlushForPrune)
+    if (fDoFullFlush || fPeriodicWrite)
     {
         // Depend on nMinDiskSpace to ensure we can write block index
         if (!CheckDiskSpace(0))
@@ -684,35 +708,22 @@ bool FlushStateToDiskInternal(CValidationState &state,
         // trim extra so that we don't flush as often during IBD.
         if (IsChainNearlySyncd() && !fReindex && !fImporting)
         {
-            pcoinsTip->Trim(nCoinCacheMaxSize * .95);
+            pcoinsTip->Trim(nCoinCacheMaxSize);
         }
-        else if (!GetArg("-dbcache", 0))
+        else
         {
-            // When no dbcache setting is in place then we default to flushing the cache
-            // more frequently to support the automatic cache sizing function. If we don't
-            // do this, then when flush time comes we can easily exceed the maxiumum memory,
-            // particularly on Windows systems.
             // Trim, but never trim more than nMaxCacheIncreaseSinceLastFlush
             size_t nTrimSize = nCoinCacheMaxSize * .90;
             if (nCoinCacheMaxSize - nMaxCacheIncreaseSinceLastFlush > nTrimSize)
             {
-                if (nCoinCacheMaxSize > (int64_t)nMaxCacheIncreaseSinceLastFlush)
-                    nTrimSize = nCoinCacheMaxSize - nMaxCacheIncreaseSinceLastFlush;
+                nTrimSize = nCoinCacheMaxSize - nMaxCacheIncreaseSinceLastFlush;
             }
             pcoinsTip->Trim(nTrimSize);
         }
-        else
-        {
-            // During IBD this is gives optimal performance, particularly on systems with
-            // spinning disk. This is because we keep the number of databaase compactions
-            // to a minimum.
-            pcoinsTip->Trim(nCoinCacheMaxSize * .90);
-        }
-
         nSizeAfterLastFlush = pcoinsTip->DynamicMemoryUsage();
     }
-    if (fDoFullFlush || fFlushForPrune || ((mode == FLUSH_STATE_ALWAYS || mode == FLUSH_STATE_PERIODIC) &&
-                                              nNow > nLastSetChain + (int64_t)DATABASE_WRITE_INTERVAL * 1000000))
+    if (fDoFullFlush || ((mode == FLUSH_STATE_ALWAYS || mode == FLUSH_STATE_PERIODIC) &&
+                            nNow > nLastSetChain + (int64_t)DATABASE_WRITE_INTERVAL * 1000000))
     {
         // Update best block in wallet (so we can detect restored wallets).
         GetMainSignals().SetBestChain(chainActive.GetLocator());
@@ -845,22 +856,22 @@ bool FindBlockPos(CValidationState &state,
 
     if (!fKnown)
     {
-        unsigned int nOldChunks = (pos.nPos + blockfile_chunk_size - 1) / blockfile_chunk_size;
-        unsigned int nNewChunks = (vinfoBlockFile[nFile].nSize + blockfile_chunk_size - 1) / blockfile_chunk_size;
+        unsigned int nOldChunks = (pos.nPos + BLOCKFILE_CHUNK_SIZE - 1) / BLOCKFILE_CHUNK_SIZE;
+        unsigned int nNewChunks = (vinfoBlockFile[nFile].nSize + BLOCKFILE_CHUNK_SIZE - 1) / BLOCKFILE_CHUNK_SIZE;
         if (nNewChunks > nOldChunks)
         {
             if (fPruneMode)
             {
                 fCheckForPruning = true;
             }
-            if (CheckDiskSpace(nNewChunks * blockfile_chunk_size - pos.nPos))
+            if (CheckDiskSpace(nNewChunks * BLOCKFILE_CHUNK_SIZE - pos.nPos))
             {
                 FILE *file = OpenBlockFile(pos);
                 if (file)
                 {
-                    LOGA("Pre-allocating up to position 0x%x in blk%05u.dat\n", nNewChunks * blockfile_chunk_size,
+                    LOGA("Pre-allocating up to position 0x%x in blk%05u.dat\n", nNewChunks * BLOCKFILE_CHUNK_SIZE,
                         pos.nFile);
-                    AllocateFileRange(file, pos.nPos, nNewChunks * blockfile_chunk_size - pos.nPos);
+                    AllocateFileRange(file, pos.nPos, nNewChunks * BLOCKFILE_CHUNK_SIZE - pos.nPos);
                     fclose(file);
                 }
             }
@@ -895,22 +906,22 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
     nNewSize = vinfoBlockFile[nFile].nUndoSize += nAddSize;
     setDirtyFileInfo.insert(nFile);
 
-    unsigned int nOldChunks = (pos.nPos + undofile_chunk_size - 1) / undofile_chunk_size;
-    unsigned int nNewChunks = (nNewSize + undofile_chunk_size - 1) / undofile_chunk_size;
+    unsigned int nOldChunks = (pos.nPos + UNDOFILE_CHUNK_SIZE - 1) / UNDOFILE_CHUNK_SIZE;
+    unsigned int nNewChunks = (nNewSize + UNDOFILE_CHUNK_SIZE - 1) / UNDOFILE_CHUNK_SIZE;
     if (nNewChunks > nOldChunks)
     {
         if (fPruneMode)
         {
             fCheckForPruning = true;
         }
-        if (CheckDiskSpace(nNewChunks * undofile_chunk_size - pos.nPos))
+        if (CheckDiskSpace(nNewChunks * UNDOFILE_CHUNK_SIZE - pos.nPos))
         {
             FILE *file = OpenUndoFile(pos);
             if (file)
             {
                 LOGA(
-                    "Pre-allocating up to position 0x%x in rev%05u.dat\n", nNewChunks * undofile_chunk_size, pos.nFile);
-                AllocateFileRange(file, pos.nPos, nNewChunks * undofile_chunk_size - pos.nPos);
+                    "Pre-allocating up to position 0x%x in rev%05u.dat\n", nNewChunks * UNDOFILE_CHUNK_SIZE, pos.nFile);
+                AllocateFileRange(file, pos.nPos, nNewChunks * UNDOFILE_CHUNK_SIZE - pos.nPos);
                 fclose(file);
             }
         }

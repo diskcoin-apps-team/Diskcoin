@@ -33,9 +33,9 @@ public:
         uint64_t nOrphanTxSize;
     };
 
-    CSharedCriticalSection cs_orphanpool;
-    std::map<uint256, COrphanTx> mapOrphanTransactions GUARDED_BY(cs_orphanpool);
-    std::map<uint256, std::set<uint256> > mapOrphanTransactionsByPrev GUARDED_BY(cs_orphanpool);
+    CSharedCriticalSection cs;
+    std::map<uint256, COrphanTx> mapOrphanTransactions GUARDED_BY(cs);
+    std::map<uint256, std::set<uint256> > mapOrphanTransactionsByPrev GUARDED_BY(cs);
 
     CTxOrphanPool();
 
@@ -46,8 +46,7 @@ public:
     bool AddOrphanTx(const CTransactionRef &ptx, NodeId peer);
 
     //! Erase an ophan tx from the orphan pool
-    //! @return true if an orphan matching the hash was found in the orphanpool and successfully erased.
-    bool EraseOrphanTx(uint256 hash);
+    void EraseOrphanTx(uint256 hash);
 
     //! Expire old orphans from the orphan pool
     void EraseOrphansByTime();
@@ -63,14 +62,14 @@ public:
     //! Orphan pool current number of transactions
     uint64_t GetOrphanPoolSize()
     {
-        READLOCK(cs_orphanpool);
+        READLOCK(cs);
         return mapOrphanTransactions.size();
     }
 
     //! Orphan pool bytes used
     uint64_t GetOrphanPoolBytes()
     {
-        READLOCK(cs_orphanpool);
+        READLOCK(cs);
         return nBytesOrphanPool;
     }
 };

@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,7 +24,7 @@ class AmountSpinBox : public QAbstractSpinBox
 
 public:
     explicit AmountSpinBox(QWidget *parent)
-        : QAbstractSpinBox(parent), currentUnit(BitcoinUnits::BCH), singleStep(100000) // satoshis
+        : QAbstractSpinBox(parent), currentUnit(BitcoinUnits::DISC), singleStep(100000) // satoshis
     {
         setAlignment(Qt::AlignRight);
 
@@ -91,7 +91,7 @@ public:
             const QFontMetrics fm(fontMetrics());
             int h = lineEdit()->minimumSizeHint().height();
             int w = fm.width(BitcoinUnits::format(
-                BitcoinUnits::BCH, BitcoinUnits::maxMoney(), false, BitcoinUnits::separatorAlways));
+                BitcoinUnits::DISC, BitcoinUnits::maxMoney(), false, BitcoinUnits::separatorAlways));
             w += 2; // cursor blinking space
 
             QStyleOptionSpinBox opt;

@@ -92,6 +92,5 @@ if __name__ == '__main__':
     ZMQTest ().main ()
 
 def Test():
-    flags = standardFlags()
-    ZMQTest ().main (flags)
+    ZMQTest ().main ()
  

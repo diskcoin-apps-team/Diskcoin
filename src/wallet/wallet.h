@@ -80,12 +80,12 @@ class CWalletTx;
 /** (client) version numbers for particular wallet features */
 enum WalletFeature
 {
-    FEATURE_BASE = 10500, // the earliest version new wallets supports (only useful for getinfo's clientversion output)
+    FEATURE_BASE = 0,//10500, // the earliest version new wallets supports (only useful for getinfo's clientversion output)
 
-    FEATURE_WALLETCRYPT = 40000, // wallet encryption
-    FEATURE_COMPRPUBKEY = 60000, // compressed public keys
+    FEATURE_WALLETCRYPT = 1,//40000, // wallet encryption
+    FEATURE_COMPRPUBKEY = 2,//60000, // compressed public keys
 
-    FEATURE_HD = 130000, // Hierarchical key derivation after BIP32 (HD Wallet)
+    FEATURE_HD = 3,//130000, // Hierarchical key derivation after BIP32 (HD Wallet)
     FEATURE_LATEST = FEATURE_COMPRPUBKEY // HD is optional, use FEATURE_COMPRPUBKEY as latest version
 };
 
@@ -263,7 +263,7 @@ public:
     mutable CAmount nAvailableWatchCreditCached;
     mutable CAmount nChangeCached;
 
-    CWalletTx() { Init(nullptr); }
+    CWalletTx() { Init(NULL); }
     CWalletTx(const CWallet *pwalletIn) { Init(pwalletIn); }
     CWalletTx(const CWallet *pwalletIn, const CMerkleTx &txIn) : CMerkleTx(txIn) { Init(pwalletIn); }
     CWalletTx(const CWallet *pwalletIn, const CTransaction &txIn) : CMerkleTx(txIn) { Init(pwalletIn); }
@@ -304,7 +304,7 @@ public:
     inline void SerializationOp(Stream &s, Operation ser_action)
     {
         if (ser_action.ForRead())
-            Init(nullptr);
+            Init(NULL);
         char fSpent = false;
 
         if (!ser_action.ForRead())
@@ -542,7 +542,7 @@ private:
     bool SelectCoins(const CAmount &nTargetValue,
         std::set<std::pair<const CWalletTx *, unsigned int> > &setCoinsRet,
         CAmount &nValueRet,
-        const CCoinControl *coinControl = nullptr) const;
+        const CCoinControl *coinControl = NULL) const;
 
     CWalletDB *pwalletdbEncryption;
 
@@ -607,7 +607,7 @@ public:
     ~CWallet()
     {
         delete pwalletdbEncryption;
-        pwalletdbEncryption = nullptr;
+        pwalletdbEncryption = NULL;
     }
 
     void SetNull()
@@ -616,7 +616,7 @@ public:
         nWalletMaxVersion = FEATURE_BASE;
         fFileBacked = false;
         nMasterKeyMaxID = 0;
-        pwalletdbEncryption = nullptr;
+        pwalletdbEncryption = NULL;
         nOrderPosNext = 0;
         nNextResend = 0;
         nLastResend = 0;
@@ -656,7 +656,7 @@ public:
      */
     void AvailableCoins(std::vector<COutput> &vCoins,
         bool fOnlyConfirmed = true,
-        const CCoinControl *coinControl = nullptr,
+        const CCoinControl *coinControl = NULL,
         bool fIncludeZeroValue = false) const;
 
     /**
@@ -673,6 +673,11 @@ public:
         CAmount &nValueRet) const;
 
     bool IsSpent(const uint256 &hash, unsigned int n) const;
+    //add for diskcoin -->
+    bool IsUtxo(const uint256 &hash, unsigned int n) const{
+        return !IsSpent(hash, n);
+    }
+    //<--
 
     bool IsLockedCoin(uint256 hash, unsigned int n) const;
     void LockCoin(COutPoint &output);
@@ -771,7 +776,7 @@ public:
         CAmount &nFeeRet,
         int &nChangePosRet,
         std::string &strFailReason,
-        const CCoinControl *coinControl = nullptr,
+        const CCoinControl *coinControl = NULL,
         bool sign = true);
     bool CommitTransaction(CWalletTx &wtxNew, CReserveKey &reservekey);
 
@@ -858,7 +863,7 @@ public:
 
     //! signify that a particular wallet feature is now used. this may change nWalletVersion and nWalletMaxVersion if
     //! those are lower
-    bool SetMinVersion(enum WalletFeature, CWalletDB *pwalletdbIn = nullptr, bool fExplicit = false);
+    bool SetMinVersion(enum WalletFeature, CWalletDB *pwalletdbIn = NULL, bool fExplicit = false);
 
     //! change which version we're allowed to upgrade to (note that this does not immediately imply upgrading to that
     //! format)
@@ -933,6 +938,8 @@ public:
 
     /* Set the current HD master key (will reset the chain child index counters) */
     bool SetHDMasterKey(const CPubKey &key);
+
+    void DebugPrint();
 };
 
 /** A key allocated from the key pool. */
@@ -984,5 +991,16 @@ public:
 // Rescan the blockchain for wallet transactions in a separate thread
 // This will drop all connections and spend a LONG time to complete
 extern void StartWalletRescanThread();
+
+#define LOCK_GET_DEPTH -999999
+extern bool check_utxo_can_spent(const CWalletTx &tx, int idx, int depth=LOCK_GET_DEPTH);
+
+struct genpid_t {
+    std::string akey;
+    uint64_t pid;
+    std::string addr;
+};
+
+genpid_t genpid();
 
 #endif // BITCOIN_WALLET_WALLET_H

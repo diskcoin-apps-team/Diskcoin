@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2016-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,7 +25,7 @@
 class ValidationResourceTracker
 {
 private:
-    mutable CCriticalSection cs_resource_tracker;
+    mutable CCriticalSection cs;
     uint64_t nSigops;
     uint64_t nSighashBytes;
 
@@ -33,19 +33,19 @@ public:
     ValidationResourceTracker() : nSigops(0), nSighashBytes(0) {}
     void Update(const uint256 &txid, uint64_t nSigopsIn, uint64_t nSighashBytesIn)
     {
-        LOCK(cs_resource_tracker);
+        LOCK(cs);
         nSigops += nSigopsIn;
         nSighashBytes += nSighashBytesIn;
         return;
     }
     uint64_t GetSigOps() const
     {
-        LOCK(cs_resource_tracker);
+        LOCK(cs);
         return nSigops;
     }
     uint64_t GetSighashBytes() const
     {
-        LOCK(cs_resource_tracker);
+        LOCK(cs);
         return nSighashBytes;
     }
 };

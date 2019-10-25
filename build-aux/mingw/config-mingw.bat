@@ -112,13 +112,6 @@ set "PATH=%MSYS_BIN%;%BASE_PATH%"
 REM Install toolchain components for the specified architecture(s) (download and unpack)
 echo Installing toolchain...
 %MSYS_SH% "%INST_DIR%\install-toolchain.sh"
-REM Check to see if install-toolchain.sh failed (possibly due to missing dependencies)
-if %errorlevel% neq 0 (
-	REM Assume that whatever caused the error also wrote an output so we
-	REM don't need to write an output here
-	pause
-	exit /b %errorlevel%
-)
 
 REM "Installs" utilities (creates wrapper scripts to alias installed python and git)
 echo Installing utilities...
@@ -278,16 +271,16 @@ echo Saving bitcoin executables to %BUILD_OUTPUT%
 REM Make sure output directory exists
 mkdir "%BUILD_OUTPUT%\"
 
-REM cd to src to copy bitcoin-tx.exe, bitcoin-cli.exe, and bitcoind.exe
+REM cd to src to copy diskcoin-tx.exe, diskcoin-cli.exe, and diskcoin.exe
 cd "%BITCOIN_GIT_ROOT%\src"
-copy bitcoin-tx.exe "%BUILD_OUTPUT%\bitcoin-tx.exe"
-copy bitcoin-cli.exe "%BUILD_OUTPUT%\bitcoin-cli.exe"
-copy bitcoind.exe "%BUILD_OUTPUT%\bitcoind.exe"
-copy bitcoin-miner.exe "%BUILD_OUTPUT%\bitcoin-miner.exe"
+copy diskcoin-tx.exe "%BUILD_OUTPUT%\diskcoin-tx.exe"
+copy diskcoin-cli.exe "%BUILD_OUTPUT%\diskcoin-cli.exe"
+copy diskcoin.exe "%BUILD_OUTPUT%\diskcoin.exe"
+copy diskcoin-miner.exe "%BUILD_OUTPUT%\diskcoin-miner.exe"
 
-REM cd to src\qt to copy bitcoin-qt.exe
+REM cd to src\qt to copy diskcoin-qt.exe
 cd qt
-copy bitcoin-qt.exe "%BUILD_OUTPUT%\bitcoin-qt.exe"
+copy diskcoin-qt.exe "%BUILD_OUTPUT%\diskcoin-qt.exe"
 
 REM Go to the 64-bit build section (in case we are building both 32 and 64 bit)
 GOTO BUILD_START_64

@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -146,7 +146,7 @@ static bool rest_headers(HTTPRequest *req, const std::string &strURIPart)
     if (path.size() != 2)
         return RESTERR(req, HTTP_BAD_REQUEST, "No header count specified. Use /rest/headers/<count>/<hash>.<ext>.");
 
-    long count = strtol(path[0].c_str(), nullptr, 10);
+    long count = strtol(path[0].c_str(), NULL, 10);
     if (count < 1 || count > 2000)
         return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of range: " + path[0]);
 
@@ -160,7 +160,7 @@ static bool rest_headers(HTTPRequest *req, const std::string &strURIPart)
     {
         const CBlockIndex *pindex = LookupBlockIndex(hash);
         LOCK(cs_main);
-        while (pindex != nullptr && chainActive.Contains(pindex))
+        while (pindex != NULL && chainActive.Contains(pindex))
         {
             headers.push_back(pindex);
             if (headers.size() == (unsigned long)count)
@@ -230,7 +230,7 @@ static bool rest_block(HTTPRequest *req, const std::string &strURIPart, bool sho
     if (!pblockindex)
         return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");
 
-    if (IsBlockPruned(pblockindex))
+    if (fHavePruned && !(pblockindex->nStatus & BLOCK_HAVE_DATA) && pblockindex->nTx > 0)
         return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not available (pruned data)");
 
     if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus()))
@@ -432,6 +432,82 @@ static bool rest_tx(HTTPRequest *req, const std::string &strURIPart)
     return true; // continue to process further HTTP reqs on this cxn
 }
 
+//add for diskcoin -->
+static const string findkv(const vector<string> &kvPairs, const string &key) {
+    for (const string &kv : kvPairs) {
+        vector<string> kvs;
+        boost::split(kvs, kv, boost::is_any_of("="));
+        if (key == kvs[0]) {
+            if (kvs.size() > 1) {
+                return kvs[1];
+            }
+            return "";
+        }
+    }
+    return "";
+}
+// A bit of a hack - dependency on a function defined in rpc/mining.cpp
+UniValue getMiningInfo(const UniValue &params, bool fHelp);
+// A bit of a hack - dependency on a function defined in rpc/mining.cpp
+UniValue submitNonce(const UniValue &params, bool fHelp);
+
+//POST /burst?requestType=submitNonce&secretPhrase=%s&nonce=%llu
+static bool rest_burst(HTTPRequest *req, const std::string &strURIPart)
+{
+    if (!CheckWarmup(req)) {
+        return false;
+    }
+    const std::string::size_type pos = strURIPart.rfind('?');
+    if (pos == std::string::npos) {
+        return false;
+    }
+    const std::string suff(strURIPart, pos + 1);
+    vector<string> kvPairs;
+    boost::split(kvPairs, suff, boost::is_any_of("&"));
+    const string requestType = findkv(kvPairs, "requestType");
+
+    UniValue objRequest(UniValue::VARR);
+    UniValue objResponse(UniValue::VOBJ);
+
+    bool bRet = true;
+    try {
+        if (requestType == "getMiningInfo") {
+    		objResponse = getMiningInfo(objRequest, false);
+        } else if (requestType == "submitNonce") {
+       		objRequest.push_back(findkv(kvPairs, "nonce"));
+       		objRequest.push_back(findkv(kvPairs, "accountId"));
+
+        	uint64_t num = 0;
+        	if (ParseUint64(findkv(kvPairs, "height"), &num)) {
+           		// objRequest.push_back(num);
+            }
+            objRequest.push_back(num);
+
+            uint64_t deadline = 0;
+            if (ParseUint64(findkv(kvPairs, "deadline"), &deadline) && deadline!=0){
+                objRequest.push_back(deadline);
+            }
+    		objResponse = submitNonce(objRequest, false);
+        } else { //skip all other
+            // if return not json , blago will crash
+            // return RESTERR(req, HTTP_INTERNAL_SERVER_ERROR, "Error: skip all other requestType");
+            objRequest = JSONRPCError(RPC_INVALID_PARAMETER, "Error: skip all other requestType");
+        }
+    } catch(const UniValue &objError) {
+        // return RESTERR(req, HTTP_INTERNAL_SERVER_ERROR, objError.write());
+        objResponse = objError;
+        bRet = false;
+    }
+
+    // return json string
+    string strJSON = objResponse.write() + "\n";
+    req->WriteHeader("Content-Type", "application/json");
+    req->WriteReply(HTTP_OK, strJSON);
+
+    return bRet; // continue to process further HTTP reqs on this cxn
+}
+// <--
+
 static bool rest_getutxos(HTTPRequest *req, const std::string &strURIPart)
 {
     if (!CheckWarmup(req))
@@ -446,7 +522,7 @@ static bool rest_getutxos(HTTPRequest *req, const std::string &strURIPart)
         boost::split(uriParts, strUriParams, boost::is_any_of("/"));
     }
 
-    // throw exception in case of an empty request
+    // throw exception in case of a empty request
     std::string strRequestMutable = req->ReadBody();
     if (strRequestMutable.length() == 0 && uriParts.size() == 0)
         return RESTERR(req, HTTP_INTERNAL_SERVER_ERROR, "Error: empty request");
@@ -461,7 +537,7 @@ static bool rest_getutxos(HTTPRequest *req, const std::string &strURIPart)
     if (uriParts.size() > 0)
     {
         // inputs is sent over URI scheme (/rest/getutxos/checkmempool/txid1-n/txid2-n/...)
-        if (uriParts[0] == "checkmempool")
+        if (uriParts.size() > 0 && uriParts[0] == "checkmempool")
             fCheckMemPool = true;
 
         for (size_t i = (fCheckMemPool) ? 1 : 0; i < uriParts.size(); i++)
@@ -543,7 +619,8 @@ static bool rest_getutxos(HTTPRequest *req, const std::string &strURIPart)
     std::vector<bool> hits;
     bitmap.resize((vOutPoints.size() + 7) / 8);
     {
-        READLOCK(mempool.cs_txmempool);
+        LOCK(cs_main);
+        READLOCK(mempool.cs);
 
         CCoinsView viewDummy;
         CCoinsViewCache view(&viewDummy);
@@ -644,10 +721,17 @@ static const struct
     const char *prefix;
     bool (*handler)(HTTPRequest *req, const std::string &strReq);
 } uri_prefixes[] = {
-    {"/rest/tx/", rest_tx}, {"/rest/block/notxdetails/", rest_block_notxdetails}, {"/rest/block/", rest_block_extended},
-    {"/rest/chaininfo", rest_chaininfo}, {"/rest/mempool/info", rest_mempool_info},
-    {"/rest/mempool/contents", rest_mempool_contents}, {"/rest/headers/", rest_headers},
+    {"/rest/tx/", rest_tx}, 
+    {"/rest/block/notxdetails/", rest_block_notxdetails}, 
+    {"/rest/block/", rest_block_extended},
+    {"/rest/chaininfo", rest_chaininfo}, 
+    {"/rest/mempool/info", rest_mempool_info},
+    {"/rest/mempool/contents", rest_mempool_contents}, 
+    {"/rest/headers/", rest_headers},
     {"/rest/getutxos", rest_getutxos},
+
+    {"/burst", rest_burst}, //diskcoin
+    {"/diskcoin", rest_burst}, //diskcoin
 };
 
 bool StartREST()

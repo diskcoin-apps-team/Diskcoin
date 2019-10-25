@@ -13,6 +13,10 @@
 #include "uint256.h"
 #include "util.h"
 
+// diskcoin
+#include "main.h"
+#include "shabal/sph_shabal.h"
+
 /**
  * Compute the next required proof of work using the legacy Bitcoin difficulty
  * adjustement + Emergency Difficulty Adjustement (EDA).
@@ -143,7 +147,7 @@ uint32_t CalculateNextWorkRequired(const CBlockIndex *pindexLast,
 }
 
 bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params &params)
-{
+{/*
     bool fNegative;
     bool fOverflow;
     arith_uint256 bnTarget;
@@ -156,12 +160,128 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params 
 
     // Check proof of work matches claimed amount
     if (UintToArith256(hash) > bnTarget)
-        return false;
+        return false;*/
 
     return true;
 }
 
-arith_uint256 GetBlockProof(const CBlockIndex &block) { return GetWorkForDifficultyBits(block.nBits); }
+// add for diskcoin -->
+uint64_t CalculateBest(int height, const unsigned char* gen_sig, uint64_t plotter_id, uint64_t nonce)
+{
+	return calc_dl(height, gen_sig, plotter_id, nonce);
+}
+
+static bool CheckProofOfCapacityInner(const CBlockHeader &header, int height, const Consensus::Params &params) {
+    uint256 hash = header.GetHash();
+
+    if (height == 0) {
+        return hash == params.hashGenesisBlock;
+    }
+
+    if ((header.nPlotterId>>56) > 0) {
+        LOGA("Failed to check plotterId h=%d, %llu....", height, header.nPlotterId);
+        return false;
+    }
+    if (header.nBaseTarget == 0) {
+        LOGA("Failed to check baseTarget h=%d dl=%llu pid=%llu nonce=%llu hash=%s....", 
+            height, header.nDeadline, header.nPlotterId, header.nNonce, hash.GetHex());
+        return false;
+    }
+    //--->fast test 2--->
+    if (fNoCheck || header.nTime + 86400*2 < GetTime() || Params().NetworkIDString()=="regtest") {
+        LOGAF("Skip pocfilter h=%d", height);
+        return true;
+    }
+    //<--
+
+    bool is_filter = false;
+    {
+        READLOCK(cs_pocfilter);
+        is_filter = pPocFilter->contains(hash);
+    }
+    LOG(BLOOM, "%s pocfilter: %d %s", (is_filter?"GET":"ADD"), height, hash.GetHex());
+
+    if (!is_filter) {
+        uint64_t dl = CalculateBest(height, header.sig, header.nPlotterId, header.nNonce)/header.nBaseTarget;
+        if (dl != header.nDeadline) {
+            LOGA("Failed to check deadline h=%d....%llu != %llu, pid=%d, sig: %s, bt: %llu, nonce: %llu", 
+                height, dl, header.nDeadline, header.nPlotterId, HexEncode(header.sig,32), header.nBaseTarget, header.nNonce);
+            return false;
+        }
+        WRITELOCK(cs_pocfilter);
+        pPocFilter->insert (hash);
+    }
+    return true;
+}
+bool CheckHeaderProofOfCapacity(const CBlockHeader &header, const Consensus::Params &params) {
+    int height = 0;
+    {
+        READLOCK(cs_mapBlockIndex);
+        BlockMap::iterator mi = mapBlockIndex.find(header.hashPrevBlock);
+        if (mapBlockIndex.end() != mi) {
+            const CBlockIndex *pindex = (*mi).second;
+            if (pindex) {
+                height = pindex->nHeight + 1;
+            } else {
+                LOGAF("not found prehash");
+                return true;
+            }
+        } else {
+            LOGAF("just check true");
+            return true;
+        }
+    }
+    return CheckProofOfCapacityInner (header, height, params);
+}
+bool CheckProofOfCapacity(uint256 hash, const Consensus::Params &params)
+{
+    int height = 0;
+    CBlockHeader header; //copy
+    {
+        READLOCK(cs_mapBlockIndex);
+        BlockMap::iterator mi = mapBlockIndex.find(hash);
+        if (mapBlockIndex.end() != mi) {
+            const CBlockIndex *pindex = (*mi).second;
+            if (pindex) {
+                height = pindex->nHeight;
+                header = pindex->GetBlockHeader();
+            } else {
+                LOGAF("not found prehash.");
+                return false;
+            }
+        } else {
+            LOGAF("just check true");
+            return false;
+        }
+    }
+    return CheckProofOfCapacityInner (header, height, params);
+}
+
+// <--
+
+//nWork = Sum( max(480 - block.dl, 0) * block.basetarget)
+arith_uint256 GetBlockProof(const CBlockIndex &block)
+{
+    const CChainParams &chainparams = Params();
+    if (block.nBaseTarget == 0) {
+        return 0;
+    }
+    
+    arith_uint256 bnTarget = chainparams.MaxBaseTarget() / block.nBaseTarget;
+    return bnTarget;
+    /*arith_uint256 bnTarget; 
+    bool fNegative;
+    bool fOverflow;
+    bnTarget.SetCompact(block.nBits, &fNegative, &fOverflow);
+    if (fNegative || fOverflow || bnTarget == 0)
+        return 0;
+    // We need to compute 2**256 / (bnTarget+1), but we can't represent 2**256
+    // as it's too large for a arith_uint256. However, as 2**256 is at least as large
+    // as bnTarget+1, it is equal to ((2**256 - bnTarget - 1) / (bnTarget+1)) + 1,
+    // or ~bnTarget / (nTarget+1) + 1.
+    return (~bnTarget / (bnTarget + 1)) + 1;*/
+}
+
 int64_t GetBlockProofEquivalentTime(const CBlockIndex &to,
     const CBlockIndex &from,
     const CBlockIndex &tip,

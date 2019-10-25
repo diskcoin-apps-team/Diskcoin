@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -15,6 +15,12 @@
 
 #include <atomic>
 #include <memory>
+
+//add for diskcoin -->
+const uint32_t DCOP_NONE = uint32_t(0);
+const uint32_t DCOP_PLEDGE = uint32_t(1);
+const uint32_t DCOP_UNPLEDGE = uint32_t(2);
+//<--
 
 extern CTweak<unsigned int> nDustThreshold;
 
@@ -75,7 +81,7 @@ public:
     /* Below flags apply in the context of BIP 68*/
     /* If this flag set, CTxIn::nSequence is NOT interpreted as a
      * relative lock-time. */
-    static const uint32_t SEQUENCE_LOCKTIME_DISABLE_FLAG = (1U << 31);
+    static const uint32_t SEQUENCE_LOCKTIME_DISABLE_FLAG = (1 << 31);
 
     /* If CTxIn::nSequence encodes a relative lock-time and this flag
      * is set, the relative lock-time has units of 512 seconds,
@@ -238,6 +244,10 @@ public:
     // the data ID is defined as a 4 byte pushdata containing a little endian 4 byte integer.
     bool HasData(uint32_t dataID) const;
 
+    //add for diskcoin -->
+    uint32_t GetPledgeType(int &iin, int &iout) const;
+    //<--
+
     // Return sum of txouts.
     CAmount GetValueOut() const;
     // GetValueIn() is a method on CCoinsViewCache, because
@@ -249,7 +259,9 @@ public:
     // Compute modified tx size for priority calculation (optionally given tx size)
     unsigned int CalculateModifiedSize(unsigned int nSize = 0) const;
 
+    //mdy for diskcoin -->
     bool IsCoinBase() const { return (vin.size() == 1 && vin[0].prevout.IsNull()); }
+    //<--
     friend bool operator==(const CTransaction &a, const CTransaction &b) { return a.hash == b.hash; }
     friend bool operator!=(const CTransaction &a, const CTransaction &b) { return a.hash != b.hash; }
     std::string ToString() const;
@@ -290,22 +302,6 @@ struct CMutableTransaction
      * fly, as opposed to GetHash() in CTransaction, which uses a cached result.
      */
     uint256 GetHash() const;
-};
-
-/** Properties of a transaction that are discovered during tx evaluation */
-class CTxProperties
-{
-public:
-    uint64_t countWithAncestors = 0;
-    uint64_t sizeWithAncestors = 0;
-    uint64_t countWithDescendants = 0;
-    uint64_t sizeWithDescendants = 0;
-    CTxProperties() {}
-    CTxProperties(uint64_t ancestorCount, uint64_t ancestorSize, uint64_t descendantCount, uint64_t descendantSize)
-        : countWithAncestors(ancestorCount), sizeWithAncestors(ancestorSize), countWithDescendants(descendantCount),
-          sizeWithDescendants(descendantSize)
-    {
-    }
 };
 
 typedef std::shared_ptr<const CTransaction> CTransactionRef;

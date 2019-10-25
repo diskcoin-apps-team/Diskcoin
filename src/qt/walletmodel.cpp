@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,6 +19,7 @@
 #include "ui_interface.h"
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h" // for BackupWallet
+#include "wallet/rpcwallet.h"
 
 #include <stdint.h>
 
@@ -57,14 +58,107 @@ CAmount WalletModel::getBalance(const CCoinControl *coinControl) const
         CAmount nBalance = 0;
         std::vector<COutput> vCoins;
         wallet->AvailableCoins(vCoins, true, coinControl);
-        for (const COutput &out : vCoins)
-            if (out.fSpendable)
+        //modify for diskcoin -->
+        for (const COutput &out : vCoins) {
+            if (out.fSpendable) {
+                if (!check_utxo_can_spent(*out.tx, out.i, out.nDepth)) { //has detect spendable
+                    LOGA("%s Skip idx: %d[%llu]", __func__, out.i, out.tx->vout[out.i].nValue);
+                    continue;
+                }
                 nBalance += out.tx->vout[out.i].nValue;
-
+            }
+        }
+        //<--
+        LOGA("%s:%d, %llu", __func__, __LINE__, nBalance);
         return nBalance;
     }
 
-    return wallet->GetBalance();
+    CAmount balance = wallet->GetBalance();
+        LOGA("%s:%d, %llu", __func__, __LINE__, balance);
+    return balance;
+}
+
+CAmount WalletModel::getStakeinBalance() const
+{
+    CAmount amount = 0;
+    UniValue objRequest(UniValue::VARR);
+    UniValue objResponse(UniValue::VOBJ);
+
+    bool bRet = true;
+    try {
+        objResponse = liststakein(objRequest, false);
+        UniValue arrRow = objResponse.get_array();
+        for (unsigned i=0; i<arrRow.size(); i++) {
+            const UniValue &row = arrRow[i].get_obj();
+            amount += row["satoshi"].get_uint64();
+            LOGA("%s:%d utxo %s : %d, satoshi: %llu", __func__, __LINE__, row["txid"].get_str(), row["vout"].get_int(), row["satoshi"].get_uint64());
+        }
+        LOGA("%s:%d, total amount = %llu", __func__, __LINE__, amount);
+    } catch(const UniValue &objError) {
+        LOGA("Failed to %s:%d. err: %s", __func__, __LINE__, objError.write());
+    }
+    return amount;
+}
+
+CAmount WalletModel::getStaketoBalance() const
+{
+    CAmount amount = 0;
+    UniValue objRequest(UniValue::VARR);
+    UniValue objResponse(UniValue::VOBJ);
+
+    bool bRet = true;
+    try {
+        objResponse = liststakeout(objRequest, false);
+        UniValue arrRow = objResponse.get_array();
+        for (unsigned i=0; i<arrRow.size(); i++) {
+            const UniValue &row = arrRow[i].get_obj();
+            amount += row["satoshi"].get_uint64();
+            LOGA("%s:%d utxo %s : %d, satoshi: %llu", __func__, __LINE__, row["txid"].get_str(), row["vout"].get_int(), row["satoshi"].get_uint64());
+        }
+        LOGA("%s:%d, total amount = %llu", __func__, __LINE__, amount);
+    } catch(const UniValue &objError) {
+        LOGA("Failed to %s:%d. err: %s", __func__, __LINE__, objError.write());
+    }
+    return amount;
+}
+
+CAmount WalletModel::getUnstakingBalance() const
+{
+    CAmount amount = 0;
+    UniValue objRequest(UniValue::VARR);
+    UniValue objResponse(UniValue::VOBJ);
+
+    bool bRet = true;
+    try {
+        objRequest.push_back(0); //for mempool
+        
+        objResponse = listunstake(objRequest, false);
+        UniValue arrRow = objResponse.get_array();
+        for (unsigned i=0; i<arrRow.size(); i++) {
+            const UniValue &row = arrRow[i].get_obj();
+            amount += row["satoshi"].get_uint64();
+            LOGA("%s:%d utxo %s : %d, satoshi: %llu", __func__, __LINE__, row["txid"].get_str(), row["vout"].get_int(), row["satoshi"].get_uint64());
+        }
+        LOGA("%s:%d, total amount = %llu", __func__, __LINE__, amount);
+    } catch(const UniValue &objError) {
+        LOGA("Failed to %s:%d. err: %s", __func__, __LINE__, objError.write());
+    }
+    return amount;
+}
+
+CAmount WalletModel::getWatchStakeBalance() const
+{
+    return 0;
+}
+
+CAmount WalletModel::getWatchStaketoBalance() const
+{
+    return 0;
+}
+
+CAmount WalletModel::getWatchUnstakingBalance() const
+{
+    return 0;
 }
 
 CAmount WalletModel::getUnconfirmedBalance() const { return wallet->GetUnconfirmedBalance(); }
@@ -110,35 +204,54 @@ void WalletModel::checkBalanceChanged()
 {
     CAmount newBalance = getBalance();
     CAmount newUnconfirmedBalance = getUnconfirmedBalance();
+    CAmount newStakeBalance = getStakeinBalance();
+    CAmount newstaketoBalance  = getStaketoBalance();
+    CAmount newunstakingBalance = getUnstakingBalance();
     CAmount newImmatureBalance = getImmatureBalance();
     CAmount newWatchOnlyBalance = 0;
     CAmount newWatchUnconfBalance = 0;
+    CAmount newWatchStakeBalance = 0;
+    CAmount newwatchStaketoBalance = 0;
+    CAmount newwatchUnstakingBalance = 0;
     CAmount newWatchImmatureBalance = 0;
     if (haveWatchOnly())
     {
         newWatchOnlyBalance = getWatchBalance();
         newWatchUnconfBalance = getWatchUnconfirmedBalance();
+        newWatchStakeBalance = getWatchStakeBalance();
+        newwatchStaketoBalance = getWatchStaketoBalance();
+        newwatchUnstakingBalance = getWatchUnstakingBalance();
         newWatchImmatureBalance = getWatchImmatureBalance();
     }
 
     if (cachedBalance != newBalance || cachedUnconfirmedBalance != newUnconfirmedBalance ||
+        cachedStakeBalance != newStakeBalance || cachedUnstakingBalance != newunstakingBalance ||
+        cachedStaketoBalance != newstaketoBalance || cachedStaketoBalance != newwatchStaketoBalance ||
         cachedImmatureBalance != newImmatureBalance || cachedWatchOnlyBalance != newWatchOnlyBalance ||
+        cachedWatchStakeBalance != newWatchStakeBalance || cachedwatchUnstakingBalance != newwatchUnstakingBalance ||
         cachedWatchUnconfBalance != newWatchUnconfBalance || cachedWatchImmatureBalance != newWatchImmatureBalance)
     {
         cachedBalance = newBalance;
         cachedUnconfirmedBalance = newUnconfirmedBalance;
+        cachedStakeBalance = newStakeBalance;
+        cachedStaketoBalance = newstaketoBalance;
+        cachedUnstakingBalance = newunstakingBalance;
         cachedImmatureBalance = newImmatureBalance;
         cachedWatchOnlyBalance = newWatchOnlyBalance;
         cachedWatchUnconfBalance = newWatchUnconfBalance;
+        cachedWatchStakeBalance = newWatchStakeBalance;
+        cachedwatchStaketoBalance = newwatchStaketoBalance;
+        cachedwatchUnstakingBalance = newwatchUnstakingBalance;
         cachedWatchImmatureBalance = newWatchImmatureBalance;
 
-        Q_EMIT balanceChanged(newBalance, newUnconfirmedBalance, newImmatureBalance, newWatchOnlyBalance,
-            newWatchUnconfBalance, newWatchImmatureBalance);
+        Q_EMIT balanceChanged(newBalance, newUnconfirmedBalance, newStakeBalance, newstaketoBalance, newunstakingBalance, newImmatureBalance, newWatchOnlyBalance,
+            newWatchUnconfBalance, newWatchStakeBalance, newwatchStaketoBalance, newwatchUnstakingBalance, newWatchImmatureBalance);
     }
 }
 
 void WalletModel::updateTransaction()
 {
+    LOGA("%s:%d update trans.", __func__, __LINE__);
     // Balance and number of transactions might have changed
     fForceCheckBalanceChanged = true;
 }
@@ -205,7 +318,7 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
             total += subtotal;
         }
         else
-        { // User-entered bitcoin address / amount:
+        { // User-entered diskcoin address / amount:
             if (!validateAddress(rcp.address))
             {
                 return InvalidAddress;
@@ -331,7 +444,7 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction &tran
         transaction_array.append(&(ssTx[0]), ssTx.size());
     }
 
-    // Add addresses / update labels that we've sent to the address book,
+    // Add addresses / update labels that we've sent to to the address book,
     // and emit coinsSent signal for each recipient
     Q_FOREACH (const SendCoinsRecipient &rcp, transaction.getRecipients())
     {
@@ -367,6 +480,117 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction &tran
     checkBalanceChanged();
 
     return SendCoinsReturn(OK);
+}
+
+WalletModel::SendCoinsReturn WalletModel::stakeCoins(WalletModelTransaction &transaction)
+{
+    QByteArray transaction_array; /* store serialized transaction */
+
+    {
+        LOCK2(cs_main, wallet->cs_wallet);
+        CWalletTx *newTx = transaction.getTransaction();
+
+        Q_FOREACH (const SendCoinsRecipient &rcp, transaction.getRecipients())
+        {
+            if (rcp.paymentRequest.IsInitialized())
+            {
+                // Make sure any payment requests involved are still valid.
+                if (PaymentServer::verifyExpired(rcp.paymentRequest.getDetails()))
+                {
+                    return PaymentRequestExpired;
+                }
+
+                // Store PaymentRequests in wtx.vOrderForm in wallet.
+                std::string key("PaymentRequest");
+                std::string value;
+                rcp.paymentRequest.SerializeToString(&value);
+                newTx->vOrderForm.push_back(make_pair(key, value));
+            }
+            else if (!rcp.message.isEmpty())
+            {
+                // Message from normal bitcoincash:URI
+                // (bitcoincash:123...?message=example)
+                newTx->vOrderForm.push_back(make_pair("Message", rcp.message.toStdString()));
+            }
+            else if (!rcp.message.isEmpty()) // Message from normal bitcoin:URI (bitcoin:123...?message=example)
+                newTx->vOrderForm.push_back(make_pair("Message", rcp.message.toStdString()));
+
+            //start to pledge
+            std::string strAddress = rcp.address.toStdString();
+
+            UniValue arr(UniValue::VARR);
+            arr.push_back(UniValue(strAddress));
+            arr.push_back(ValueFromAmount(rcp.amount));
+
+            LOGAF("staketo address:%s, acount:%lu", strAddress, rcp.amount);
+            try {
+                staketo(arr, false);
+
+            } catch (const UniValue& errVal) {
+                LOGAF("Failed to rpc. err=%s", errVal.write());
+                return InvalidAmount;
+            }
+        }
+
+        //CReserveKey *keyChange = transaction.getPossibleKeyChange();
+        //if (!wallet->CommitTransaction(*newTx, *keyChange))
+        //    return TransactionCommitFailed;
+
+        CTransaction *t = (CTransaction *)newTx;
+        CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
+        ssTx << *t;
+        transaction_array.append(&(ssTx[0]), ssTx.size());
+    }
+
+    // Add addresses / update labels that we've sent to to the address book,
+    // and emit coinsSent signal for each recipient
+    Q_FOREACH (const SendCoinsRecipient &rcp, transaction.getRecipients())
+    {
+        // Set have watch only flag to true if sending to a coin freeze address
+        if (!rcp.freezeLockTime.isEmpty())
+            this->updateWatchOnlyFlag(true);
+
+        // Don't touch the address book when we have a payment request
+        if (!rcp.paymentRequest.IsInitialized())
+        {
+            std::string strAddress = rcp.address.toStdString();
+            CTxDestination dest = DecodeDestination(strAddress);
+            std::string strLabel = rcp.label.toStdString();
+            {
+                LOCK(wallet->cs_wallet);
+
+                std::map<CTxDestination, CAddressBookData>::iterator mi = wallet->mapAddressBook.find(dest);
+
+                // Check if we have a new address or an updated label
+                if (mi == wallet->mapAddressBook.end())
+                {
+                    wallet->SetAddressBook(dest, strLabel, "stake");
+                }
+                else if (mi->second.name != strLabel)
+                {
+                    wallet->SetAddressBook(dest, strLabel, ""); // "" means don't change purpose
+                }
+            }
+        }
+        Q_EMIT coinsSent(wallet, rcp, transaction_array);
+    }
+    // update balance immediately, otherwise there could be a short noticeable delay until pollBalanceChanged hits
+    checkBalanceChanged();
+
+    return SendCoinsReturn(OK);
+}
+
+void WalletModel::unstakeCoins(std::string txid)
+{
+    UniValue arr(UniValue::VARR);
+    arr.push_back(UniValue(txid));
+
+    LOGAF("unstake txid:%s.", txid);
+    try {
+        unstake(arr, false);
+    } catch (const UniValue& errVal) {
+        LOGAF("Failed to unstake rpc. err=%s", errVal.write());
+    }
 }
 
 OptionsModel *WalletModel::getOptionsModel() { return optionsModel; }
@@ -594,6 +818,12 @@ void WalletModel::listCoins(std::map<QString, std::vector<COutput> > &mapCoins) 
         CTxDestination address;
         if (!out.fSpendable || !ExtractDestination(cout.tx->vout[cout.i].scriptPubKey, address))
             continue;
+        //add for diskcoin -->
+        if (!check_utxo_can_spent (*out.tx, out.i, out.nDepth)) {
+            LOGA("%s Skip idx: %d[%llu]", __func__, out.i, out.tx->vout[out.i].nValue);
+            continue;
+        }
+        //<--
         mapCoins[QString::fromStdString(EncodeDestination(address))].push_back(out);
     }
 }

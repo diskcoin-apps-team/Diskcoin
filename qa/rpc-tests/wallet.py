@@ -284,12 +284,16 @@ class WalletTest (BitcoinTestFramework):
         try:
             txId  = self.nodes[0].sendtoaddress(self.nodes[2].getnewaddress(), "1f-4")
         except JSONRPCException as e:
-            assert("Error parsing JSON:1f-4" in e.error['message'])
+            assert("Invalid amount" in e.error['message'])
         else:
             raise AssertionError("Must not parse invalid amounts")
 
-        # this is now a valid call because we convert on server side instead of client side
-        self.nodes[0].generate("2")
+
+        try:
+            self.nodes[0].generate("2")
+            raise AssertionError("Must not accept strings as numeric")
+        except JSONRPCException as e:
+            assert("not an integer" in e.error['message'])
 
         # Import address and private key to check correct behavior of spendable unspents
         # 1. Send some coins to generate new UTXO
@@ -440,12 +444,12 @@ class WalletTest (BitcoinTestFramework):
             logging.info("check " + m)
             stop_nodes(self.nodes)
             wait_bitcoinds()
-            self.node_args = [['-usehd=0', m], ['-usehd=0', m], ['-usehd=0', m]]
+            self.node_args = [['-usehd=0'], ['-usehd=0'], ['-usehd=0']]
             self.nodes = start_nodes(3, self.options.tmpdir, self.node_args)
-            # wait for blockchain to catch up
-            waitFor(60, lambda : [block_count] * 3 == [self.nodes[i].getblockcount() for i in range(3)])
-            # wait for wallet to catch up to blockchain
-            waitFor(60, lambda : balance_nodes == [self.nodes[i].getbalance() for i in range(3)], lambda: print("balances: " + [self.nodes[i].getbalance() for i in range(3)] + " expecting: " + balance_nodes))
+            while m == '-reindex' and [block_count] * 3 != [self.nodes[i].getblockcount() for i in range(3)]:
+                # reindex will leave rpc warm up "early"; Wait for it to finish
+                time.sleep(0.1)
+            assert_equal(balance_nodes, [self.nodes[i].getbalance() for i in range(3)])
 
         # Exercise listsinceblock with the last two blocks
         coinbase_tx_1 = self.nodes[0].listsinceblock(blocks[0])

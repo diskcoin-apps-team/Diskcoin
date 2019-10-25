@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,7 +14,7 @@
 #include "consensus/merkle.h"
 #include "consensus/tx_verify.h"
 #include "consensus/validation.h"
-#include "hashwrapper.h"
+#include "hash.h"
 #include "main.h"
 #include "net.h"
 #include "parallel.h"
@@ -29,19 +29,13 @@
 #include "utilmoneystr.h"
 #include "validation/validation.h"
 #include "validationinterface.h"
+#include "wallet/wallet.h"
+#include "shabal/stakedb.h"
+#include "dstencode.h"
 
-#include <algorithm>
-#include <boost/thread.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <queue>
 #include <thread>
-
-// Track timing information for Score and Package mining.
-std::atomic<int64_t> nTotalPackage{0};
-std::atomic<int64_t> nTotalScore{0};
-
-/** Maximum number of failed attempts to insert a package into a block */
-static const unsigned int MAX_PACKAGE_FAILURES = 5;
 
 using namespace std;
 
@@ -102,11 +96,11 @@ BlockAssembler::BlockAssembler(const CChainParams &_chainparams)
     nBlockMinSize = std::min(nBlockMaxSize, nBlockMinSize);
 }
 
-void BlockAssembler::resetBlock(const CScript &scriptPubKeyIn, int64_t coinbaseSize)
+void BlockAssembler::resetBlock(const CScript &scriptFundPubKeyIn, const CScript &scriptPubKeyIn, int64_t coinbaseSize)
 {
     inBlock.clear();
 
-    nBlockSize = reserveBlockSize(scriptPubKeyIn, coinbaseSize); // Core: 1000
+    nBlockSize = reserveBlockSize(scriptFundPubKeyIn, scriptPubKeyIn, coinbaseSize); // Core: 1000
     nBlockSigOps = 100; // Reserve 100 sigops for miners to use in their coinbase transaction
 
     // These counters do not include coinbase tx
@@ -117,20 +111,20 @@ void BlockAssembler::resetBlock(const CScript &scriptPubKeyIn, int64_t coinbaseS
     blockFinished = false;
 }
 
-uint64_t BlockAssembler::reserveBlockSize(const CScript &scriptPubKeyIn, int64_t coinbaseSize)
+uint64_t BlockAssembler::reserveBlockSize(const CScript &scriptFundPubKeyIn, const CScript &scriptPubKeyIn, int64_t coinbaseSize)
 {
     CBlockHeader h;
     uint64_t nHeaderSize, nCoinbaseSize, nCoinbaseReserve;
 
     // BU add the proper block size quantity to the actual size
     nHeaderSize = ::GetSerializeSize(h, SER_NETWORK, PROTOCOL_VERSION);
-    assert(nHeaderSize == 80); // BU always 80 bytes
+    assert(nHeaderSize == 76+64); // BU always 80 bytes
     nHeaderSize += 5; // tx count varint - 5 bytes is enough for 4 billion txs; 3 bytes for 65535 txs
 
 
     // This serializes with output value, a fixed-length 8 byte field, of zero and height, a serialized CScript
     // signed integer taking up 4 bytes for heights 32768-8388607 (around the year 2167) after which it will use 5
-    nCoinbaseSize = ::GetSerializeSize(coinbaseTx(scriptPubKeyIn, 400000, 0), SER_NETWORK, PROTOCOL_VERSION);
+    nCoinbaseSize = ::GetSerializeSize(coinbaseTx(scriptFundPubKeyIn, scriptPubKeyIn, 400000, 0, 0), SER_NETWORK, PROTOCOL_VERSION);
 
     if (coinbaseSize >= 0) // Explicit size of coinbase has been requested
     {
@@ -145,19 +139,27 @@ uint64_t BlockAssembler::reserveBlockSize(const CScript &scriptPubKeyIn, int64_t
     // So if their reserve choice is bigger then our coinbase then use that.
     nCoinbaseSize = std::max(nCoinbaseSize, nCoinbaseReserve);
 
-
+    //nCoinbaseSize ==> nCoinbaseSize
     return nHeaderSize + nCoinbaseSize;
 }
-CTransactionRef BlockAssembler::coinbaseTx(const CScript &scriptPubKeyIn, int _nHeight, CAmount nValue)
+
+CTransactionRef BlockAssembler::coinbaseTx(const CScript &scriptFundPubKeyIn, const CScript &scriptPubKeyIn, 
+    int _nHeight, CAmount nFundValue, CAmount nValue)
 {
     CMutableTransaction tx;
 
     tx.vin.resize(1);
     tx.vin[0].prevout.SetNull();
-    tx.vout.resize(1);
-    tx.vout[0].scriptPubKey = scriptPubKeyIn;
-    tx.vout[0].nValue = nValue;
+    tx.vout.resize(2); 
+
     tx.vin[0].scriptSig = CScript() << _nHeight << OP_0;
+
+    tx.vout[0].scriptPubKey = scriptFundPubKeyIn;
+    tx.vout[0].nValue = nFundValue;
+
+    tx.vout[1].scriptPubKey = scriptPubKeyIn;
+    tx.vout[1].nValue = nValue;
+
 
     // BU005 add block size settings to the coinbase
     std::string cbmsg = FormatCoinbaseMessage(BUComments, minerComment);
@@ -178,7 +180,8 @@ CTransactionRef BlockAssembler::coinbaseTx(const CScript &scriptPubKeyIn, int _n
 
     // Make sure the coinbase is big enough.
     uint64_t nCoinbaseSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
-    if (nCoinbaseSize < MIN_TX_SIZE && IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
+    if (nCoinbaseSize < MIN_TX_SIZE && AreWeOnBCHChain() &&
+        IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
     {
         tx.vin[0].scriptSig << std::vector<uint8_t>(MIN_TX_SIZE - nCoinbaseSize - 1);
     }
@@ -186,17 +189,18 @@ CTransactionRef BlockAssembler::coinbaseTx(const CScript &scriptPubKeyIn, int _n
     return MakeTransactionRef(std::move(tx));
 }
 
-std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn, int64_t coinbaseSize)
+std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript &scriptFundPubKeyIn, 
+    const CScript &scriptPubKeyIn, int64_t coinbaseSize, CSubmit *pSubmit)
 {
     std::unique_ptr<CBlockTemplate> tmpl(nullptr);
 
     if (nBlockMaxSize > BLOCKSTREAM_CORE_MAX_BLOCK_SIZE)
-        tmpl = CreateNewBlock(scriptPubKeyIn, false, coinbaseSize);
+        tmpl = CreateNewBlock(scriptFundPubKeyIn, scriptPubKeyIn, false, coinbaseSize, pSubmit);
 
     // If the block is too small we need to drop back to the 1MB ruleset
     if ((!tmpl) || (tmpl->block.GetBlockSize() <= BLOCKSTREAM_CORE_MAX_BLOCK_SIZE))
     {
-        tmpl = CreateNewBlock(scriptPubKeyIn, true, coinbaseSize);
+        tmpl = CreateNewBlock(scriptFundPubKeyIn, scriptPubKeyIn, true, coinbaseSize, pSubmit);
     }
 
     return tmpl;
@@ -211,28 +215,67 @@ public:
     }
 };
 
-std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript &scriptPubKeyIn,
+std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript &scriptFundPubKeyIn, const CScript &scriptPubKeyIn,
     bool blockstreamCoreCompatible,
-    int64_t coinbaseSize)
+    int64_t coinbaseSize, CSubmit *pSubmit)
 {
-    resetBlock(scriptPubKeyIn, coinbaseSize);
+    resetBlock(scriptFundPubKeyIn, scriptPubKeyIn, coinbaseSize);
 
     // The constructed block template
     std::unique_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
 
     CBlock *pblock = &pblocktemplate->block;
 
+    //add for diskcoin -->
+    if (pSubmit) {
+        pblock->nNonce = pSubmit->nonce;
+        pblock->nBaseTarget = pSubmit->base_target;
+        pblock->nPlotterId = pSubmit->plotter_id;
+        pblock->nDeadline = pSubmit->deadline;
+
+        memcpy(pblock->sig, pSubmit->gensig, 32);
+    }
+    //<--
+
     // Add dummy coinbase tx as first transaction
     pblock->vtx.emplace_back();
     pblocktemplate->vTxFees.push_back(-1); // updated at end
     pblocktemplate->vTxSigOps.push_back(-1); // updated at end
 
-    LOCK(cs_main);
+    //add for diskcoin -->
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    
+    // LOCK(cs_main);
     CBlockIndex *pindexPrev = chainActive.Tip();
     assert(pindexPrev); // can't make a new block if we don't even have the genesis block
 
+    int nStakeHeight = stakedb_restep_to (pindexPrev);
+    LOGAF("try added self %d, next->%d, nStakeHeight:%d", pindexPrev->nHeight, pindexPrev->nHeight+1, nStakeHeight);
+    if (nStakeHeight < 0) {
+        stakedb_debug_print(NULL);
+        LOGA("Failed to restep_to %d, cancel new block", pindexPrev->nHeight);
+        stakedb_reinit();
+        // throw std::runtime_error(strprintf("Failed to restep_to %d, cancel new block", pindexPrev->nHeight));
+    }
+
+    // uint64_t uPledge = GetWalletAddressPledge(scriptPubKeyIn);
+    // uint32_t uMinedBlockNum = GetWalletAddressMinedBlock(scriptPubKeyIn) + 1;
+
+    CTxDestination addrDest;
+    if (!ExtractDestination(scriptPubKeyIn, addrDest)) {
+        throw std::runtime_error(strprintf("%s:%d: attacks-coinbase-addr2.", __func__, __LINE__));
+    }
+    std::string addr = EncodeDestination(addrDest);
+    uint64_t uPledge = stakedb_get_stake(addr.c_str());
+    uint32_t uMinedBlockNum = stakedb_get_mined (addr.c_str()) + 1;
+
+    if (uMinedBlockNum == 0) {
+        throw std::runtime_error(strprintf("%s:%d: attacks-coinbase-minednum.", __func__, __LINE__));
+    }
+    //<--
+
     {
-        READLOCK(mempool.cs_txmempool);
+        READLOCK(mempool.cs);
         nHeight = pindexPrev->nHeight + 1;
 
         pblock->nTime = GetAdjustedTime();
@@ -246,45 +289,24 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript &sc
         nLockTimeCutoff =
             (STANDARD_LOCKTIME_VERIFY_FLAGS & LOCKTIME_MEDIAN_TIME_PAST) ? nMedianTimePast : pblock->GetBlockTime();
 
-        bool canonical = fCanonicalTxsOrder;
-        // On BCH always allow overwite of fCanonicalTxsOrder but not for regtest
-        if (IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
+        std::vector<const CTxMemPoolEntry *> vtxe;
+        addPriorityTxs(&vtxe);
+        addScoreTxs(&vtxe);
+
+        nLastBlockTx = nBlockTx;
+        nLastBlockSize = nBlockSize;
+        LOGA("CreateNewBlock(): total size %llu txs: %llu fees: %lld sigops %u. uPledge=%lu, mined=%d\n", nBlockSize, nBlockTx, nFees,
+            nBlockSigOps, uPledge, uMinedBlockNum);
+
+        bool canonical = enableCanonicalTxOrder.Value();
+        // On BCH always allow overwite of enableCanonicalTxOrder but not for regtest
+        if (AreWeOnBCHChain() && IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
         {
             if (chainparams.NetworkIDString() != "regtest")
             {
                 canonical = true;
             }
         }
-        else
-        {
-            if (chainparams.NetworkIDString() != "regtest")
-            {
-                canonical = false;
-            }
-        }
-
-        std::vector<const CTxMemPoolEntry *> vtxe;
-        addPriorityTxs(&vtxe);
-
-        // Mine by package (CPFP) or by score.
-        if (miningCPFP.Value() == true)
-        {
-            int64_t nStartPackage = GetStopwatchMicros();
-            addPackageTxs(&vtxe, canonical);
-            nTotalPackage += GetStopwatchMicros() - nStartPackage;
-        }
-        else
-        {
-            int64_t nStartScore = GetStopwatchMicros();
-            addScoreTxs(&vtxe);
-            nTotalScore += GetStopwatchMicros() - nStartScore;
-        }
-
-        nLastBlockTx = nBlockTx;
-        nLastBlockSize = nBlockSize;
-        LOGA("CreateNewBlock(): total size %llu txs: %llu fees: %lld sigops %u\n", nBlockSize, nBlockTx, nFees,
-            nBlockSigOps);
-
 
         // sort tx if there are any and the feature is enabled
         if (canonical)
@@ -299,17 +321,24 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript &sc
             pblocktemplate->vTxSigOps.push_back(txe->GetSigOpCount());
         }
 
-        // Create coinbase transaction.
+        // uint64_t uPledge = GetWalletAddressPledge(); // deadlock !!!
+        //get minersubsidy first
+        CAmount nMinerValue = GetBlockMinerSubsidy(nHeight, chainparams.GetConsensus(), uPledge, uMinedBlockNum);
+        // CAmount nFundValue = GetBlockFundSubsidy(nHeight, chainparams.GetConsensus(), uPledge);
+        // CAmount nMinerValue = nFees + GetBlockMinerSubsidy(nHeight, chainparams.GetConsensus(), uPledge);
+        CAmount nFundValue = GetBlockSubsidy(nHeight, chainparams.GetConsensus()) - nMinerValue;
+        nMinerValue += nFees;
         pblock->vtx[0] =
-            coinbaseTx(scriptPubKeyIn, nHeight, nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus()));
+            coinbaseTx(scriptFundPubKeyIn, scriptPubKeyIn,  nHeight, nFundValue, nMinerValue);
         pblocktemplate->vTxFees[0] = -nFees;
 
         // Fill in header
         pblock->hashPrevBlock = pindexPrev->GetBlockHash();
         UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
+
         pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
-        pblock->nNonce = 0;
-        pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0], STANDARD_SCRIPT_VERIFY_FLAGS);
+        
+        pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0], STANDARD_CHECKDATASIG_VERIFY_FLAGS);
     }
 
     CValidationState state;
@@ -347,27 +376,6 @@ bool BlockAssembler::isStillDependent(CTxMemPool::txiter iter)
         }
     }
     return false;
-}
-
-bool BlockAssembler::TestPackageSigOps(uint64_t packageSize, unsigned int packageSigOps)
-{
-    uint64_t blockMbSize = 1 + (nBlockSize + packageSize - 1) / 1000000;
-    uint64_t nMaxSigOpsAllowed = blockMiningSigopsPerMb.Value() * blockMbSize;
-    if (nBlockSigOps + packageSigOps >= nMaxSigOpsAllowed)
-        return false;
-    return true;
-}
-
-// Block size and sigops have already been tested.  Check that all transactions
-// are final.
-bool BlockAssembler::TestPackageFinality(const CTxMemPool::setEntries &package)
-{
-    for (const CTxMemPool::txiter it : package)
-    {
-        if (!IsFinalTx(it->GetSharedTx(), nHeight, nLockTimeCutoff))
-            return false;
-    }
-    return true;
 }
 
 // Return true if incremental tx or txs in the block with the given size and sigop count would be
@@ -433,9 +441,9 @@ bool BlockAssembler::TestForBlock(CTxMemPool::txiter iter)
     if (!IsFinalTx(iter->GetSharedTx(), nHeight, nLockTimeCutoff))
         return false;
 
-    // On BCH if Nov 15th 2019 has been activaterd make sure tx size
+    // On BCH if Nov 15th 2019 has been acivaterd make sure tx size
     // is greater or equal than 100 bytes
-    if (IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
+    if (AreWeOnBCHChain() && IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
     {
         if (iter->GetTxSize() < MIN_TX_SIZE)
             return false;
@@ -490,7 +498,7 @@ void BlockAssembler::addScoreTxs(std::vector<const CTxMemPoolEntry *> *vtxe)
             clearedTxs.pop();
         }
 
-        // If tx already in block then skip
+        // If tx already in block, skip  (added by addPriorityTxs)
         if (inBlock.count(iter))
         {
             continue;
@@ -519,128 +527,6 @@ void BlockAssembler::addScoreTxs(std::vector<const CTxMemPoolEntry *> *vtxe)
                     clearedTxs.push(child);
                     waitSet.erase(child);
                 }
-            }
-        }
-    }
-}
-
-void BlockAssembler::SortForBlock(const CTxMemPool::setEntries &package, std::vector<CTxMemPool::txiter> &sortedEntries)
-{
-    // Sort package by ancestor count
-    // If a transaction A depends on transaction B, then A's ancestor count
-    // must be greater than B's.  So this is sufficient to validly order the
-    // transactions for block inclusion.
-    sortedEntries.clear();
-    sortedEntries.insert(sortedEntries.begin(), package.begin(), package.end());
-    std::sort(sortedEntries.begin(), sortedEntries.end(), CompareTxIterByAncestorCount());
-}
-
-// This transaction selection algorithm orders the mempool based
-// on feerate of a transaction including all unconfirmed ancestors.
-//
-// This is accomplished by considering a group of ancestors as a single transaction. We can call these
-// transactions, Ancestor Grouped Transactions (AGT). This approach to grouping allows us to process
-// packages orders of magnitude faster than other methods of package mining since we no longer have
-// to continuously update the descendant state as we mine part of an unconfirmed chain.
-//
-// There is a theoretical flaw in this approach which could happen when a block is almost full. We
-// could for instance end up including a lower fee transaction as part of an ancestor group when
-// in fact it would be better, in terms of fees, to include some other single transaction. This
-// would result in slightly less fees (perhaps a few hundred satoshis) rewarded to the miner. However,
-// this situation is not likely to be seen for two reasons. One, long unconfirmed chains are typically
-// having transactions with all the same fees and Two, the typical child pays for parent scenario has only
-// two transactions with the child having the higher fee. And neither of these two types of packages could
-// cause any loss of fees with this mining algorithm, when the block is nearly full.
-void BlockAssembler::addPackageTxs(std::vector<const CTxMemPoolEntry *> *vtxe, bool fCanonical)
-{
-    AssertLockHeld(mempool.cs_txmempool);
-
-    CTxMemPool::txiter iter;
-    uint64_t nPackageFailures = 0;
-    for (auto mi = mempool.mapTx.get<ancestor_score>().begin(); mi != mempool.mapTx.get<ancestor_score>().end(); mi++)
-    {
-        iter = mempool.mapTx.project<0>(mi);
-
-        uint64_t packageSize = iter->GetSizeWithAncestors();
-        CAmount packageFees = iter->GetModFeesWithAncestors();
-        unsigned int packageSigOps = iter->GetSigOpCountWithAncestors();
-
-        // Skip txns we know are in the block
-        if (inBlock.count(iter))
-        {
-            continue;
-        }
-
-        // Get any unconfirmed ancestors of this txn
-        CTxMemPool::setEntries ancestors;
-        uint64_t nNoLimit = std::numeric_limits<uint64_t>::max();
-        std::string dummy;
-        mempool._CalculateMemPoolAncestors(
-            *iter, ancestors, nNoLimit, nNoLimit, nNoLimit, nNoLimit, dummy, &inBlock, false);
-
-        // Include in the package the current txn we're working with
-        ancestors.insert(iter);
-
-        // Recalculate sigops and package size, only if there were txns already in the block for
-        // this set of ancestors
-        if (iter->GetCountWithAncestors() > ancestors.size())
-        {
-            packageSize = 0;
-            packageSigOps = 0;
-            for (auto &it : ancestors)
-            {
-                packageSize += it->GetTxSize();
-                packageSigOps += it->GetSigOpCount();
-            }
-        }
-        if (packageFees < ::minRelayTxFee.GetFee(packageSize) && nBlockSize >= nBlockMinSize)
-        {
-            // Everything else we might consider has a lower fee rate so no need to continue
-            return;
-        }
-
-        // Test if package fits in the block
-        if (nBlockSize + packageSize > nBlockMaxSize)
-        {
-            if (nBlockSize > nBlockMaxSize * .50)
-            {
-                nPackageFailures++;
-            }
-
-            // If we keep failing then the block must be almost full so bail out here.
-            if (nPackageFailures >= MAX_PACKAGE_FAILURES)
-                return;
-            else
-                continue;
-        }
-
-        // Test that the package does not exceed sigops limits
-        if (!TestPackageSigOps(packageSize, packageSigOps))
-        {
-            continue;
-        }
-        // Test if all tx's are Final
-        if (!TestPackageFinality(ancestors))
-        {
-            continue;
-        }
-
-        // The Package can now be added to the block.
-        if (fCanonical)
-        {
-            for (auto &it : ancestors)
-            {
-                AddToBlock(vtxe, it);
-            }
-        }
-        else
-        {
-            // Sort the entries in a valid order if we are not doing CTOR
-            vector<CTxMemPool::txiter> sortedEntries;
-            SortForBlock(ancestors, sortedEntries);
-            for (size_t i = 0; i < sortedEntries.size(); ++i)
-            {
-                AddToBlock(vtxe, sortedEntries[i]);
             }
         }
     }
@@ -726,16 +612,16 @@ void BlockAssembler::addPriorityTxs(std::vector<const CTxMemPoolEntry *> *vtxe)
     }
 }
 
-void IncrementExtraNonce(CBlock *pblock, unsigned int &nExtraNonce)
+void IncrementExtraNonce(CBlock *pblock, uint64_t nExtraNonce)
 {
     // Update nExtraNonce
     static uint256 hashPrevBlock;
     if (hashPrevBlock != pblock->hashPrevBlock)
     {
-        nExtraNonce = 0;
+        // nExtraNonce = 0;
         hashPrevBlock = pblock->hashPrevBlock;
     }
-    ++nExtraNonce;
+    // ++nExtraNonce;
     unsigned int nHeight = pblock->GetHeight(); // Height first in coinbase required for block.version=2
     CMutableTransaction txCoinbase(*pblock->vtx[0]);
 
@@ -754,11 +640,32 @@ void IncrementExtraNonce(CBlock *pblock, unsigned int &nExtraNonce)
 
     // On BCH if Nov15th 2018 has been activated make sure the coinbase is big enough
     uint64_t nCoinbaseSize = ::GetSerializeSize(txCoinbase, SER_NETWORK, PROTOCOL_VERSION);
-    if (nCoinbaseSize < MIN_TX_SIZE && IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
+    if (nCoinbaseSize < MIN_TX_SIZE && AreWeOnBCHChain() &&
+        IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
     {
         txCoinbase.vin[0].scriptSig << std::vector<uint8_t>(MIN_TX_SIZE - nCoinbaseSize - 1);
     }
 
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
     pblock->hashMerkleRoot = BlockMerkleRoot(*pblock);
+}
+
+void CSubmit::Update(uint64_t height, uint64_t nonce, uint64_t plotter_id, uint64_t deadline)
+{
+    extern bool InBlacklist(uint64_t plotter_id);
+    if (InBlacklist(plotter_id))
+    {
+        LOGA("Update memory submit ignore height[%d] nonce[%d] plotter_id[%d] deadline[%d]",
+            height, nonce, plotter_id, deadline);
+        return ;
+    }
+
+    this->height        = height;
+    this->nonce         = nonce;
+    this->plotter_id    = plotter_id;
+    this->deadline      = deadline;
+    
+    base_target = chainActive.GetBaseTarget();
+    memcpy(this->gensig, chainActive.GetGenerationSignature(), sizeof(this->gensig));
+    LOGA("submit Update %d sig: %s, dl: %llu, base_target: %llu", height, HexEncode(this->gensig, 32), deadline, base_target);
 }

@@ -16,6 +16,7 @@
 
 #include "stdio.h"
 
+#include <openssl/rand.h>
 #include <string>
 #include <vector>
 
@@ -204,7 +205,7 @@ uint256 SignatureHashLegacy(const CScript &scriptCode,
     // Serialize and hash
     CHashWriter ss(SER_GETHASH, 0);
     ss << txTmp << nHashType;
-    if (nHashedOut != nullptr)
+    if (nHashedOut != NULL)
         *nHashedOut = ss.GetNumBytesHashed();
     return ss.GetHash();
 }

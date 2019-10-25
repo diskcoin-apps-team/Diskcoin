@@ -1,5 +1,4 @@
 // Copyright (c) 2015-2016 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -133,8 +132,8 @@ void TorControlConnection::readcb(struct bufferevent *bev, void *ctx)
     size_t n_read_out = 0;
     char *line;
     assert(input);
-    //  If there is not a whole line to read, evbuffer_readln returns nullptr
-    while ((line = evbuffer_readln(input, &n_read_out, EVBUFFER_EOL_CRLF)) != nullptr)
+    //  If there is not a whole line to read, evbuffer_readln returns NULL
+    while ((line = evbuffer_readln(input, &n_read_out, EVBUFFER_EOL_CRLF)) != NULL)
     {
         std::string s(line, n_read_out);
         free(line);
@@ -221,7 +220,7 @@ bool TorControlConnection::Connect(const std::string &target,
     b_conn = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
     if (!b_conn)
         return false;
-    bufferevent_setcb(b_conn, TorControlConnection::readcb, nullptr, TorControlConnection::eventcb, this);
+    bufferevent_setcb(b_conn, TorControlConnection::readcb, NULL, TorControlConnection::eventcb, this);
     bufferevent_enable(b_conn, EV_READ | EV_WRITE);
     this->connected = _connected;
     this->disconnected = _disconnected;
@@ -336,7 +335,7 @@ static std::pair<bool, std::string> ReadBinaryFile(const fs::path &filename,
     size_t maxsize = std::numeric_limits<size_t>::max())
 {
     FILE *f = fsbridge::fopen(filename, "rb");
-    if (f == nullptr)
+    if (f == NULL)
         return std::make_pair(false, "");
     std::string retval;
     char buffer[128];
@@ -357,7 +356,7 @@ static std::pair<bool, std::string> ReadBinaryFile(const fs::path &filename,
 static bool WriteBinaryFile(const fs::path &filename, const std::string &data)
 {
     FILE *f = fsbridge::fopen(filename, "wb");
-    if (f == nullptr)
+    if (f == NULL)
         return false;
     if (fwrite(data.data(), 1, data.size(), f) != data.size())
     {
@@ -371,7 +370,7 @@ static bool WriteBinaryFile(const fs::path &filename, const std::string &data)
 /****** Bitcoin specific TorController implementation ********/
 
 /** Controller that connects to Tor control socket, authenticate, then create
- * and maintain an ephemeral hidden service.
+ * and maintain a ephemeral hidden service.
  */
 class TorController
 {

@@ -1,34 +1,12 @@
-// Copyright (c) 2018-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_TXADMISSION_H
-#define BITCOIN_TXADMISSION_H
-
 #include "fastfilter.h"
-#include "main.h"
 #include "net.h"
 #include "threadgroup.h"
-#include "txdebugger.h"
 #include "txmempool.h"
 #include <queue>
-
-/** The default value for -minrelaytxfee in sat/byte */
-static const double DEFAULT_MINLIMITERTXFEE = (double)DEFAULT_MIN_RELAY_TX_FEE / 1000;
-/** The default value for -maxrelaytxfee in sat/byte */
-static const double DEFAULT_MAXLIMITERTXFEE = (double)DEFAULT_MIN_RELAY_TX_FEE / 1000;
-/** The number of block heights to gradually choke spam transactions over */
-static const unsigned int MAX_BLOCK_SIZE_MULTIPLIER = 3;
-
-/** The maximum number of free transactions (in KB) that can enter the mempool per minute.
- *  For a 1MB block we allow 15KB of free transactions per 1 minute.
- */
-static const uint32_t DEFAULT_LIMITFREERELAY = DEFAULT_BLOCK_MAX_SIZE * 0.000015;
-/** The minimum value possible for -limitfreerelay when rate limiting */
-static const unsigned int DEFAULT_MIN_LIMITFREERELAY = 1;
-
-/** Subject free transactions to priority checking when entering the mempool */
-static const bool DEFAULT_RELAYPRIORITY = false;
 
 /**
  * Filter for transactions that were recently rejected by
@@ -55,7 +33,7 @@ static const bool DEFAULT_RELAYPRIORITY = false;
 class Snapshot
 {
 public:
-    CCriticalSection cs_snapshot;
+    CCriticalSection cs;
     uint64_t tipHeight;
     uint64_t tipMedianTimePast;
     int64_t adjustedTime;
@@ -148,8 +126,6 @@ extern std::queue<CTxInputData> txWaitNextBlockQ;
 extern CWaitableCriticalSection csCommitQ;
 extern CConditionVariable cvCommitQ;
 extern std::map<uint256, CTxCommitData> *txCommitQ;
-extern CCriticalSection csCommitQFinal;
-extern std::map<uint256, CTxCommitData> *txCommitQFinal;
 
 // returns a transaction ref, if it exists in the commitQ
 CTransactionRef CommitQGet(uint256 hash);
@@ -185,9 +161,7 @@ bool ParallelAcceptToMemoryPool(Snapshot &ss,
     bool fRejectAbsurdFee,
     TransactionClass allowedTx,
     std::vector<COutPoint> &vCoinsToUncache,
-    bool *isRespend,
-    CValidationDebugger *debugger = nullptr,
-    CTxProperties *txProps = nullptr);
+    bool *isRespend);
 
 /** Checks the size of the mempool and trims it if needed */
 void LimitMempoolSize(CTxMemPool &pool, size_t limit, unsigned long age);
@@ -243,5 +217,3 @@ public:
         txProcessingCorral.Exit(CORRAL_TX_PAUSE);
     }
 };
-
-#endif

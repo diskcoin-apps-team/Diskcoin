@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -119,6 +119,9 @@ private:
     QAction *openRPCConsoleAction;
     QAction *openAction;
     QAction *showHelpMessageAction;
+    //add for diskcoin -->
+    QAction *genpidAction;
+    //<--
 
     QSystemTrayIcon *trayIcon;
     QMenu *trayIconMenu;
@@ -169,7 +172,7 @@ public Q_SLOTS:
                             @see CClientUIInterface::MessageBoxFlags
        @param[in] ret       pointer to a bool that will be modified to whether Ok was clicked (modal only)
     */
-    void message(const QString &title, const QString &message, unsigned int style, bool *ret = nullptr);
+    void message(const QString &title, const QString &message, unsigned int style, bool *ret = NULL);
 
 #ifdef ENABLE_WALLET
     /** Set the encryption status as shown in the UI.
@@ -216,7 +219,7 @@ private Q_SLOTS:
 #endif // ENABLE_WALLET
     /** Show configuration dialog */
     void optionsClicked();
-    /** Show Bitcoin Unlimited dialog */
+    /** Show Diskcoin dialog */
     void unlimitedClicked();
     /** Show about dialog */
     void aboutClicked();
@@ -226,6 +229,9 @@ private Q_SLOTS:
     void showDebugWindowActivateConsole();
     /** Show help message dialog */
     void showHelpMessageClicked();
+    //add for diskcoin -->
+    void genpidWindow();
+    //<--
 #ifndef Q_OS_MAC
     /** Handle tray icon clicked */
     void trayIconActivated(QSystemTrayIcon::ActivationReason reason);

@@ -13,7 +13,7 @@ CTxOrphanPool::CTxOrphanPool() : nLastOrphanCheck(GetTime()), nBytesOrphanPool(0
 
 bool CTxOrphanPool::AlreadyHaveOrphan(const uint256 &hash)
 {
-    READLOCK(cs_orphanpool);
+    READLOCK(cs);
     if (mapOrphanTransactions.count(hash))
         return true;
     return false;
@@ -21,7 +21,7 @@ bool CTxOrphanPool::AlreadyHaveOrphan(const uint256 &hash)
 
 bool CTxOrphanPool::AddOrphanTx(const CTransactionRef &ptx, NodeId peer)
 {
-    AssertWriteLockHeld(cs_orphanpool);
+    AssertWriteLockHeld(cs);
 
     if (mapOrphanTransactions.empty())
         DbgAssert(nBytesOrphanPool == 0, nBytesOrphanPool = 0);
@@ -48,13 +48,13 @@ bool CTxOrphanPool::AddOrphanTx(const CTransactionRef &ptx, NodeId peer)
     return true;
 }
 
-bool CTxOrphanPool::EraseOrphanTx(uint256 hash)
+void CTxOrphanPool::EraseOrphanTx(uint256 hash)
 {
-    AssertWriteLockHeld(cs_orphanpool);
+    AssertWriteLockHeld(cs);
 
     std::map<uint256, COrphanTx>::iterator it = mapOrphanTransactions.find(hash);
     if (it == mapOrphanTransactions.end())
-        return false;
+        return;
     for (const CTxIn &txin : it->second.ptx->vin)
     {
         std::map<uint256, std::set<uint256> >::iterator itPrev = mapOrphanTransactionsByPrev.find(txin.prevout.hash);
@@ -69,12 +69,11 @@ bool CTxOrphanPool::EraseOrphanTx(uint256 hash)
     LOG(MEMPOOL, "Erased orphan tx %s of size %ld bytes, orphan pool bytes:%ld\n", it->second.ptx->GetHash().ToString(),
         it->second.nOrphanTxSize, nBytesOrphanPool);
     mapOrphanTransactions.erase(it);
-    return true;
 }
 
 void CTxOrphanPool::EraseOrphansByTime()
 {
-    AssertWriteLockHeld(cs_orphanpool);
+    AssertWriteLockHeld(cs);
     // Because we have to iterate through the entire orphan cache which can be large we don't want to check this
     // every time a tx enters the mempool but just once every 5 minutes is good enough.
     if (GetTime() < nLastOrphanCheck + 5 * 60)
@@ -102,7 +101,7 @@ void CTxOrphanPool::EraseOrphansByTime()
 
 unsigned int CTxOrphanPool::LimitOrphanTxSize(unsigned int nMaxOrphans, uint64_t nMaxBytes)
 {
-    AssertWriteLockHeld(cs_orphanpool);
+    AssertWriteLockHeld(cs);
 
     // Limit the orphan pool size by either number of transactions or the max orphan pool size allowed.
     // Limiting by pool size to 1/10th the size of the maxmempool alone is not enough because the total number
@@ -127,7 +126,7 @@ unsigned int CTxOrphanPool::LimitOrphanTxSize(unsigned int nMaxOrphans, uint64_t
 
 void CTxOrphanPool::QueryHashes(std::vector<uint256> &vHashes)
 {
-    READLOCK(cs_orphanpool);
+    READLOCK(cs);
     for (auto &it : mapOrphanTransactions)
         vHashes.push_back(it.first);
 }

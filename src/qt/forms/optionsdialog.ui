@@ -146,7 +146,7 @@
        <item>
         <widget class="QCheckBox" name="mapPortUpnp">
          <property name="toolTip">
-          <string>Automatically open the Bitcoin client port on the router. This only works when your router supports UPnP and it is enabled.</string>
+          <string>Automatically open the Diskcoin client port on the router. This only works when your router supports UPnP and it is enabled.</string>
          </property>
          <property name="text">
           <string>Map port using &amp;UPnP</string>
@@ -166,7 +166,7 @@
        <item>
         <widget class="QCheckBox" name="connectSocks">
          <property name="toolTip">
-          <string>Connect to the Bitcoin network through a SOCKS5 proxy.</string>
+          <string>Connect to the Diskcoin network through a SOCKS5 proxy.</string>
          </property>
          <property name="text">
           <string>&amp;Connect through SOCKS5 proxy (default proxy):</string>
@@ -272,7 +272,7 @@
             <bool>false</bool>
            </property>
            <property name="toolTip">
-            <string>Shows if the supplied default SOCKS5 proxy is used to reach peers via this network type.</string>
+            <string>Shows, if the supplied default SOCKS5 proxy is used to reach peers via this network type.</string>
            </property>
            <property name="text">
             <string/>
@@ -295,7 +295,7 @@
             <bool>false</bool>
            </property>
            <property name="toolTip">
-            <string>Shows if the supplied default SOCKS5 proxy is used to reach peers via this network type.</string>
+            <string>Shows, if the supplied default SOCKS5 proxy is used to reach peers via this network type.</string>
            </property>
            <property name="text">
             <string/>
@@ -318,7 +318,7 @@
             <bool>false</bool>
            </property>
            <property name="toolTip">
-            <string>Shows if the supplied default SOCKS5 proxy is used to reach peers via this network type.</string>
+            <string>Shows, if the supplied default SOCKS5 proxy is used to reach peers via this network type.</string>
            </property>
            <property name="text">
             <string/>
@@ -353,7 +353,7 @@
        <item>
         <widget class="QCheckBox" name="connectSocksTor">
          <property name="toolTip">
-          <string>Connect to the Bitcoin network through a separate SOCKS5 proxy for Tor hidden services.</string>
+          <string>Connect to the Diskcoin network through a separate SOCKS5 proxy for Tor hidden services.</string>
          </property>
          <property name="text">
           <string>Use separate SOCKS5 proxy to reach peers via Tor hidden services:</string>

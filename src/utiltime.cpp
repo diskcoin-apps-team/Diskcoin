@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -38,9 +38,8 @@ int64_t GetTime()
 void SetMockTime(int64_t nMockTimeIn) { nMockTime.store(nMockTimeIn, std::memory_order_relaxed); }
 int64_t GetTimeMillis()
 {
-    int64_t mocktime = nMockTime.load(std::memory_order_relaxed);
-    if (mocktime)
-        return mocktime * 1000;
+    if (nMockTime)
+        return nMockTime * 1000;
 
     int64_t now = (boost::posix_time::microsec_clock::universal_time() -
                       boost::posix_time::ptime(boost::gregorian::date(1970, 1, 1)))
@@ -51,12 +50,6 @@ int64_t GetTimeMillis()
 
 int64_t GetTimeMicros()
 {
-    int64_t mocktime = nMockTime.load(std::memory_order_relaxed);
-    if (mocktime)
-    {
-        return mocktime * 1000000;
-    }
-
     int64_t now = (boost::posix_time::microsec_clock::universal_time() -
                       boost::posix_time::ptime(boost::gregorian::date(1970, 1, 1)))
                       .total_microseconds();
@@ -66,9 +59,9 @@ int64_t GetTimeMicros()
 
 
 #ifdef WIN32
-uint64_t GetStopwatch() { return 1000 * GetLogTimeMicros(); }
+uint64_t GetStopwatch() { return 1000 * GetTimeMicros(); }
 #elif MAC_OSX
-uint64_t GetStopwatch() { return 1000 * GetLogTimeMicros(); }
+uint64_t GetStopwatch() { return 1000 * GetTimeMicros(); }
 #else
 uint64_t GetStopwatch()
 {
@@ -87,11 +80,13 @@ uint64_t GetStopwatch()
 /** Return a time useful for the debug log */
 int64_t GetLogTimeMicros()
 {
-    int64_t now = (boost::posix_time::microsec_clock::universal_time() -
-                      boost::posix_time::ptime(boost::gregorian::date(1970, 1, 1)))
-                      .total_microseconds();
-    assert(now > 0);
-    return now;
+    int64_t mocktime = nMockTime.load(std::memory_order_relaxed);
+    if (mocktime)
+    {
+        return mocktime * 1000000;
+    }
+
+    return GetTimeMicros();
 }
 
 void MilliSleep(int64_t n)

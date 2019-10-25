@@ -16,7 +16,8 @@ Then install [Homebrew](http://brew.sh).
 ## Dependencies
 
 ```bash
-brew install automake berkeley-db4 libtool boost --c++11 miniupnpc openssl pkg-config protobuf --c++11 qt5 libevent
+#brew install automake berkeley-db4 libtool boost --c++11 miniupnpc openssl pkg-config protobuf --c++11 qt5 libevent
+brew install automake berkeley-db4 libtool boost miniupnpc openssl pkg-config protobuf qt5 libevent
 ```
 
 See [dependencies.md](dependencies.md) for a complete overview.

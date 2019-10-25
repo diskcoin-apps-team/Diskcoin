@@ -1,4 +1,4 @@
-// Copyright (c) 2016-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2016-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -27,7 +27,6 @@ successful receipt, "requester.Rejected(...)" to indicate a bad object (request 
 #ifndef REQUEST_MANAGER_H
 #define REQUEST_MANAGER_H
 
-#include "blockrelay/mempool_sync.h"
 #include "net.h"
 #include "nodestate.h"
 #include "stat.h"
@@ -35,7 +34,7 @@ successful receipt, "requester.Rejected(...)" to indicate a bad object (request 
 #include <atomic>
 
 // Max requests allowed in a 10 minute window
-static const uint8_t MAX_THINTYPE_OBJECT_REQUESTS = 100;
+static const uint8_t MAX_THINTYPE_OBJECT_REQUESTS = 40;
 
 // When should I request a tx from someone else (in microseconds). cmdline/bitcoin.conf: -txretryinterval
 extern unsigned int txReqRetryInterval;
@@ -45,10 +44,6 @@ static const unsigned int DEFAULT_MIN_TX_REQUEST_RETRY_INTERVAL = 5 * 1000 * 100
 extern unsigned int blkReqRetryInterval;
 extern unsigned int MIN_BLK_REQUEST_RETRY_INTERVAL;
 static const unsigned int DEFAULT_MIN_BLK_REQUEST_RETRY_INTERVAL = 5 * 1000 * 1000;
-// Which peers have mempool synchronization in-flight?
-extern std::map<NodeId, CMempoolSyncState> mempoolSyncRequested;
-extern uint64_t lastMempoolSync;
-extern CCriticalSection cs_mempoolsync;
 
 class CNode;
 
@@ -60,7 +55,7 @@ public:
     CNode *node;
     CNodeRequestData(CNode *);
 
-    CNodeRequestData() : requestCount(0), desirability(0), node(nullptr) {}
+    CNodeRequestData() : requestCount(0), desirability(0), node(NULL) {}
     void clear(void)
     {
         requestCount = 0;
@@ -85,7 +80,7 @@ public:
     CInv obj;
     bool rateLimited;
     bool fProcessing; // object was received but is still being processed
-    int64_t lastRequestTime; // In stopwatch time microseconds, 0 means no request
+    int64_t lastRequestTime; // In microseconds, 0 means no request
     unsigned int outstandingReqs;
     ObjectSourceList availableFrom;
     unsigned int priority;
@@ -106,7 +101,7 @@ public:
 struct QueuedBlock
 {
     uint256 hash;
-    int64_t nTime; // Stopwatch time of "getdata" request in microseconds.
+    int64_t nTime; //! Time of "getdata" request in microseconds.
 };
 struct CRequestManagerNodeState
 {
@@ -161,10 +156,6 @@ protected:
 public:
     CRequestManager();
 
-    // Cleanup stops all request manager activity, aborts all current requests, and releases all node references
-    // in preparation for shutdown
-    void Cleanup();
-
     // How many outbound nodes are we connected to.
     std::atomic<int32_t> nOutbound;
 
@@ -196,14 +187,8 @@ public:
     // Update the response time for this transaction request
     void UpdateTxnResponseTime(const CInv &obj, CNode *pfrom);
 
-    // Indicate that we are processing this transaction
-    void ProcessingTxn(const uint256 &hash, CNode *pfrom);
-
-    // Indicate that we are processing this block
-    void ProcessingBlock(const uint256 &hash, CNode *pfrom);
-
-    // Indicate that the block failed initial acceptance
-    void BlockRejected(const CInv &obj, CNode *pfrom);
+    // Indicate that we are processing this object.
+    void Processing(const CInv &obj, CNode *pfrom);
 
     // Indicate that we got this object
     void Received(const CInv &obj, CNode *pfrom);
@@ -237,9 +222,6 @@ public:
 
     // This gets called from RequestNextBlocksToDownload
     void FindNextBlocksToDownload(CNode *node, unsigned int count, std::vector<CBlockIndex *> &vBlocks);
-
-    // Request to synchronize mempool with peer pto
-    void RequestMempoolSync(CNode *pto);
 
     // Returns a bool indicating whether we requested this block.
     void MarkBlockAsInFlight(NodeId nodeid, const uint256 &hash);

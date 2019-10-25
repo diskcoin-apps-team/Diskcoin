@@ -168,8 +168,8 @@
         <translation>你確定要把錢包加密嗎？</translation>
     </message>
     <message>
-        <source>Bitcoin Unlimited will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your bitcoins from being stolen by malware infecting your computer.</source>
-        <translation>Bitcoin Unlimited 現在要關閉，好完成加密程序。請注意，加密錢包不能完全防止入侵你的電腦的惡意程式偷取錢幣。</translation>
+        <source>Diskcoin will close now to finish the encryption process. Remember that encrypting your wallet cannot fully protect your bitcoins from being stolen by malware infecting your computer.</source>
+        <translation>Diskcoin 現在要關閉，好完成加密程序。請注意，加密錢包不能完全防止入侵你的電腦的惡意程式偷取錢幣。</translation>
     </message>
     <message>
         <source>IMPORTANT: Any previous backups you have made of your wallet file should be replaced with the newly generated, encrypted wallet file. For security reasons, previous backups of the unencrypted wallet file will become useless as soon as you start using the new, encrypted wallet.</source>
@@ -306,8 +306,8 @@
         <translation>開啓 URI...</translation>
     </message>
     <message>
-        <source>Bitcoin Unlimited client</source>
-        <translation>Bitcoin Unlimited 客戶端軟體</translation>
+        <source>Diskcoin client</source>
+        <translation>Diskcoin 客戶端軟體</translation>
     </message>
     <message>
         <source>Importing blocks from disk...</source>
@@ -358,8 +358,8 @@
         <translation>收款</translation>
     </message>
     <message>
-        <source>Show information about Bitcoin Unlimited</source>
-        <translation>顯示 Bitcoin Unlimited 的相關資訊</translation>
+        <source>Show information about Diskcoin</source>
+        <translation>顯示 Diskcoin 的相關資訊</translation>
     </message>
     <message>
         <source>&amp;Show / Hide</source>
@@ -398,20 +398,20 @@
         <translation>分頁工具列</translation>
     </message>
     <message>
-        <source>Bitcoin Unlimited</source>
-        <translation>Bitcoin Unlimited</translation>
+        <source>Diskcoin</source>
+        <translation>Diskcoin</translation>
     </message>
     <message>
         <source>Request payments (generates QR codes and %1: URIs)</source>
         <translation>要求付款(產生 QR Code 和 %1 付款協議的資源識別碼: URI)</translation>
     </message>
     <message>
-        <source>&amp;About Bitcoin Unlimited</source>
-        <translation>關於 Bitcoin Unlimited</translation>
+        <source>&amp;About Diskcoin</source>
+        <translation>關於 Diskcoin</translation>
     </message>
     <message>
-        <source>Modify configuration options for Bitcoin Unlimited</source>
-        <translation>修改 Bitcoin Unlimited 的設定選項</translation>
+        <source>Modify configuration options for Diskcoin</source>
+        <translation>修改 Diskcoin 的設定選項</translation>
     </message>
     <message>
         <source>Request payments (generates QR codes and %1 URIs)</source>
@@ -434,8 +434,8 @@
         <translation>命令列選項</translation>
     </message>
     <message>
-        <source>Show the Bitcoin Unlimited help message to get a list with possible Bitcoin command-line options</source>
-        <translation>顯示 Bitcoin Unlimited 的說明訊息，來取得可用命令列選項的列表</translation>
+        <source>Show the Diskcoin help message to get a list with possible Bitcoin command-line options</source>
+        <translation>顯示 Diskcoin 的說明訊息，來取得可用命令列選項的列表</translation>
     </message>
     <message numerus="yes">
         <source>%n active connection(s) to Bitcoin network</source>
@@ -859,8 +859,8 @@
 <context>
     <name>HelpMessageDialog</name>
     <message>
-        <source>Bitcoin Unlimited</source>
-        <translation>Bitcoin Unlimited</translation>
+        <source>Diskcoin</source>
+        <translation>Diskcoin</translation>
     </message>
     <message>
         <source>version</source>
@@ -871,8 +871,8 @@
         <translation>(%1 位元)</translation>
     </message>
     <message>
-        <source>About Bitcoin Unlimited</source>
-        <translation>關於 Bitcoin Unlimited</translation>
+        <source>About Diskcoin</source>
+        <translation>關於 Diskcoin</translation>
     </message>
     <message>
         <source>Command-line options</source>
@@ -922,16 +922,16 @@
         <translation>歡迎</translation>
     </message>
     <message>
-        <source>Welcome to Bitcoin Unlimited.</source>
-        <translation>歡迎使用 Bitcoin Unlimited</translation>
+        <source>Welcome to Diskcoin.</source>
+        <translation>歡迎使用 Diskcoin</translation>
     </message>
     <message>
-        <source>As this is the first time the program is launched, you can choose where Bitcoin Unlimited will store its data.</source>
-        <translation>因為這是程式第一次啓動，你可以選擇 Bitcoin Unlimited 儲存資料的地方。</translation>
+        <source>As this is the first time the program is launched, you can choose where Diskcoin will store its data.</source>
+        <translation>因為這是程式第一次啓動，你可以選擇 Diskcoin 儲存資料的地方。</translation>
     </message>
     <message>
-        <source>Bitcoin Unlimited will download and store a copy of the Bitcoin block chain. At least %1GB of data will be stored in this directory, and it will grow over time. The wallet will also be stored in this directory.</source>
-        <translation>Bitcoin Unlimited 會下載並儲存一份 Bitcoin 區塊鏈的拷貝。至少有 %1GB 的資料會儲存到這個目錄中，並且還會持續增長。另外錢包資料也會儲存在這個目錄。</translation>
+        <source>Diskcoin will download and store a copy of the Bitcoin block chain. At least %1GB of data will be stored in this directory, and it will grow over time. The wallet will also be stored in this directory.</source>
+        <translation>Diskcoin 會下載並儲存一份 Bitcoin 區塊鏈的拷貝。至少有 %1GB 的資料會儲存到這個目錄中，並且還會持續增長。另外錢包資料也會儲存在這個目錄。</translation>
     </message>
     <message>
         <source>Use the default data directory</source>
@@ -942,8 +942,8 @@
         <translation>使用自訂的資料目錄:</translation>
     </message>
     <message>
-        <source>Bitcoin Unlimited</source>
-        <translation>Bitcoin Unlimited</translation>
+        <source>Diskcoin</source>
+        <translation>Diskcoin</translation>
     </message>
     <message>
         <source>Error: Specified data directory "%1" cannot be created.</source>
@@ -1024,8 +1024,8 @@
         <translation>當視窗關閉時，把應用程式縮到最小，而不是結束。當勾選這個選項時，只能夠用選單中的結束來關掉應用程式。</translation>
     </message>
     <message>
-        <source>The user interface language can be set here. This setting will take effect after restarting Bitcoin Unlimited.</source>
-        <translation>可以在這裡設定使用者介面的語言。這個設定在重啓 Bitcoin Unlimited 後才會生效。</translation>
+        <source>The user interface language can be set here. This setting will take effect after restarting Diskcoin.</source>
+        <translation>可以在這裡設定使用者介面的語言。這個設定在重啓 Diskcoin 後才會生效。</translation>
     </message>
     <message>
         <source>Third party URLs (e.g. a block explorer) that appear in the transactions tab as context menu items. %s in the URL is replaced by transaction hash. Multiple URLs are separated by vertical bar |.</source>
@@ -1052,12 +1052,12 @@
         <translation>網路</translation>
     </message>
     <message>
-        <source>Automatically start Bitcoin Unlimited after logging in to the system.</source>
-        <translation>在登入系統後自動啓動 Bitcoin Unlimited。</translation>
+        <source>Automatically start Diskcoin after logging in to the system.</source>
+        <translation>在登入系統後自動啓動 Diskcoin。</translation>
     </message>
     <message>
-        <source>&amp;Start Bitcoin Unlimited on system login</source>
-        <translation>系統登入時啟動 Bitcoin Unlimited</translation>
+        <source>&amp;Start Diskcoin on system login</source>
+        <translation>系統登入時啟動 Diskcoin</translation>
     </message>
     <message>
         <source>(0 = auto, &lt;0 = leave that many cores free)</source>
@@ -1526,8 +1526,8 @@
         <translation>記憶體使用量</translation>
     </message>
     <message>
-        <source>Open the Bitcoin Unlimited debug log file from the current data directory. This can take a few seconds for large log files.</source>
-        <translation>從目前的資料目錄下開啓 Bitcoin Unlimited 的除錯紀錄檔。當紀錄檔很大時，可能會花好幾秒的時間。</translation>
+        <source>Open the Diskcoin debug log file from the current data directory. This can take a few seconds for large log files.</source>
+        <translation>從目前的資料目錄下開啓 Diskcoin 的除錯紀錄檔。當紀錄檔很大時，可能會花好幾秒的時間。</translation>
     </message>
     <message>
         <source>Received</source>
@@ -1686,8 +1686,8 @@
         <translation>解禁解點連線</translation>
     </message>
     <message>
-        <source>Welcome to the Bitcoin Unlimited RPC console.</source>
-        <translation>歡迎使用 Bitcoin Unlimited 的 RPC 主控台。</translation>
+        <source>Welcome to the Diskcoin RPC console.</source>
+        <translation>歡迎使用 Diskcoin 的 RPC 主控台。</translation>
     </message>
     <message>
         <source>Use up and down arrows to navigate history, and &lt;b&gt;Ctrl-L&lt;/b&gt; to clear screen.</source>
@@ -2272,8 +2272,8 @@
 <context>
     <name>ShutdownWindow</name>
     <message>
-        <source>Bitcoin Unlimited is shutting down...</source>
-        <translation>正在關閉 Bitcoin Unlimited 中...</translation>
+        <source>Diskcoin is shutting down...</source>
+        <translation>正在關閉 Diskcoin 中...</translation>
     </message>
     <message>
         <source>Do not shut down the computer until this window disappears.</source>
@@ -2422,12 +2422,12 @@
 <context>
     <name>SplashScreen</name>
     <message>
-        <source>Bitcoin Unlimited</source>
-        <translation>Bitcoin Unlimited</translation>
+        <source>Diskcoin</source>
+        <translation>Diskcoin</translation>
     </message>
     <message>
-        <source>The Bitcoin Unlimited developers</source>
-        <translation>Bitcoin Unlimited 開發人員</translation>
+        <source>The Diskcoin developers</source>
+        <translation>Diskcoin 開發人員</translation>
     </message>
     <message>
         <source>[testnet]</source>
@@ -2945,8 +2945,8 @@
         <translation>一次錢包交易允許付出最高的總手續費(單位是 %s)；設定太低的話，可能會無法進行資料量大的交易(預設值: %s)</translation>
     </message>
     <message>
-        <source>Please check that your computer's date and time are correct! If your clock is wrong Bitcoin Unlimited will not work properly.</source>
-        <translation>請檢查電腦日期和時間是否正確！Bitcoin Unlimited 沒辦法在時鐘不準的情況下正常運作。</translation>
+        <source>Please check that your computer's date and time are correct! If your clock is wrong Diskcoin will not work properly.</source>
+        <translation>請檢查電腦日期和時間是否正確！Diskcoin 沒辦法在時鐘不準的情況下正常運作。</translation>
     </message>
     <message>
         <source>Prune configured below the minimum of %d MiB.  Please use a higher number.</source>
@@ -3017,8 +3017,8 @@
         <translation>這是個還沒發表的測試版本 - 使用請自負風險 - 請不要用來開採或商業應用</translation>
     </message>
     <message>
-        <source>Unable to bind to %s on this computer. Bitcoin Unlimited is probably already running.</source>
-        <translation>沒辦法繫結在這台電腦上的 %s 。Bitcoin Unlimited 可能已經在執行了。</translation>
+        <source>Unable to bind to %s on this computer. Diskcoin is probably already running.</source>
+        <translation>沒辦法繫結在這台電腦上的 %s 。Diskcoin 可能已經在執行了。</translation>
     </message>
     <message>
         <source>Use UPnP to map the listening port (default: 1 when listening and no -proxy)</source>
@@ -3225,8 +3225,8 @@
         <translation>和指定的位址繫結以聽候 JSON-RPC 連線。IPv6 請用 [主機]:通訊埠 這種格式。這個選項可以設定多次。(預設值: 跟所有網路界面上的位址繫結)</translation>
     </message>
     <message>
-        <source>Cannot obtain a lock on data directory %s. Bitcoin Unlimited is probably already running.</source>
-        <translation>沒辦法鎖定資料目錄 %s。Bitcoin Unlimited 可能已經在執行了。</translation>
+        <source>Cannot obtain a lock on data directory %s. Diskcoin is probably already running.</source>
+        <translation>沒辦法鎖定資料目錄 %s。Diskcoin 可能已經在執行了。</translation>
     </message>
     <message>
         <source>Create new files with system default permissions, instead of umask 077 (only effective with disabled wallet functionality)</source>
@@ -3325,12 +3325,12 @@
         <translation>透過 SOCKS5 代理伺服器連線</translation>
     </message>
     <message>
-        <source>Copyright (C) 2009-%i The Bitcoin Unlimited Developers</source>
-        <translation>版權為 Bitcoin Unlimited 開發人員自西元 2009 至 %i 年起所有</translation>
+        <source>Copyright (C) 2009-%i The Diskcoin Developers</source>
+        <translation>版權為 Diskcoin 開發人員自西元 2009 至 %i 年起所有</translation>
     </message>
     <message>
-        <source>Error loading wallet.dat: Wallet requires newer version of Bitcoin Unlimited</source>
-        <translation>載入 wallet.dat 檔案時發生錯誤: 這個錢包需要新版的 Bitcoin Unlimited</translation>
+        <source>Error loading wallet.dat: Wallet requires newer version of Diskcoin</source>
+        <translation>載入 wallet.dat 檔案時發生錯誤: 這個錢包需要新版的 Diskcoin</translation>
     </message>
     <message>
         <source>Error reading from database, shutting down.</source>
@@ -3345,8 +3345,8 @@
         <translation>資訊</translation>
     </message>
     <message>
-        <source>Initialization sanity check failed. Bitcoin Unlimited is shutting down.</source>
-        <translation>初始化時的基本檢查失敗了。Bitcoin Unlimited 就要關閉了。</translation>
+        <source>Initialization sanity check failed. Diskcoin is shutting down.</source>
+        <translation>初始化時的基本檢查失敗了。Diskcoin 就要關閉了。</translation>
     </message>
     <message>
         <source>Invalid amount for -maxtxfee=&lt;amount&gt;: '%s'</source>
@@ -3465,8 +3465,8 @@
         <translation>JSON-RPC 連線使用者名稱</translation>
     </message>
     <message>
-        <source>Wallet needed to be rewritten: restart Bitcoin Unlimited to complete</source>
-        <translation>錢包需要重寫: 請重新啓動 Bitcoin Unlimited 來完成</translation>
+        <source>Wallet needed to be rewritten: restart Diskcoin to complete</source>
+        <translation>錢包需要重寫: 請重新啓動 Diskcoin 來完成</translation>
     </message>
     <message>
         <source>Warning</source>

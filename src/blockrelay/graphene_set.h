@@ -1,4 +1,4 @@
-// Copyright (c) 2018-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -7,7 +7,7 @@
 
 #include "bloom.h"
 #include "fastfilter.h"
-#include "hashwrapper.h"
+#include "hash.h"
 #include "iblt.h"
 #include "random.h"
 #include "serialize.h"
@@ -20,19 +20,15 @@
 #define LN2SQUARED 0.4804530139182014246671025263266649717305529515945455
 
 const uint8_t FILTER_CELL_SIZE = 1;
-const uint8_t IBLT_FIXED_CELL_SIZE = 13;
+const uint8_t IBLT_CELL_SIZE = 17;
 const uint32_t LARGE_MEM_POOL_SIZE = 10000000;
 const float FILTER_FPR_MAX = 0.999;
 const uint8_t IBLT_CELL_MINIMUM = 2;
 const std::vector<uint8_t> IBLT_NULL_VALUE = {};
 const unsigned char WORD_BITS = 8;
 const uint16_t APPROX_ITEMS_THRESH = 600;
-const uint16_t APPROX_ITEMS_THRESH_REDUCE_CHECK = 500;
 const uint8_t APPROX_EXCESS_RATE = 4;
 const float IBLT_DEFAULT_OVERHEAD = 1.5;
-const float UNCHECKED_ERROR_TOL = 0.001;
-const uint8_t MIN_CHECKSUM_BITS = 10;
-const uint8_t MAX_CHECKSUM_BITS = 32;
 
 
 class CGrapheneSet
@@ -45,9 +41,9 @@ private:
     uint32_t ibltSalt;
     bool computeOptimized;
     std::vector<unsigned char> encodedRank;
-    std::shared_ptr<CBloomFilter> pSetFilter;
-    std::shared_ptr<CVariableFastFilter> pFastFilter;
-    std::shared_ptr<CIblt> pSetIblt;
+    CBloomFilter *pSetFilter;
+    CVariableFastFilter *pFastFilter;
+    CIblt *pSetIblt;
 
     static const uint8_t SHORTTXIDS_LENGTH = 8;
 
@@ -110,7 +106,7 @@ public:
      * For details see
      * https://github.com/bissias/graphene-experiments/blob/master/jupyter/graphene_size_optimization.ipynb
      */
-    double ApproxOptimalSymDiff(uint64_t nBlockTxs, uint8_t nChecksumBits = MAX_CHECKSUM_BITS);
+    double ApproxOptimalSymDiff(uint64_t nBlockTxs);
 
     /* Brute force search for optimal symmetric difference between block txs and receiver
      * mempool txs passing though filter to use for IBLT.
@@ -124,8 +120,7 @@ public:
     double BruteForceSymDiff(uint64_t nBlockTxs,
         uint64_t nReceiverPoolTx,
         uint64_t nReceiverExcessTxs,
-        uint64_t nReceiverMissingTxs,
-        uint8_t nChecksumBits = MAX_CHECKSUM_BITS);
+        uint64_t nReceiverMissingTxs);
 
     // Pass the transaction hashes that the local machine has to reconcile with the remote and return a list
     // of cheap hashes in the block in the correct order
@@ -141,18 +136,6 @@ public:
 
     static std::vector<uint64_t> DecodeRank(std::vector<unsigned char> encoded, size_t nItems, uint16_t nBitsPerItem);
 
-    static double BloomFalsePositiveRate(double optSymDiff, uint64_t nReceiverExcessItems);
-
-    /* This method calculates the number of bits required for the IBLT cell checksum in order to
-     * achieve unchecked error tolerance fUncheckedErrorTol. Details can be found at the link below.
-     * https://github.com/bissias/graphene-experiments/blob/master/jupyter/min_checksum_IBLT.ipynb
-     */
-    static uint8_t NChecksumBits(size_t nIbltEntries,
-        uint8_t nIbltHashFuncs,
-        uint64_t nReceiverUniverseItems,
-        double fBloomFPR,
-        double fUncheckedErrorTol);
-
     uint64_t GetFilterSerializationSize()
     {
         if (computeOptimized)
@@ -164,19 +147,23 @@ public:
     uint64_t GetRankSerializationSize() { return ::GetSerializeSize(encodedRank, SER_NETWORK, PROTOCOL_VERSION); }
     ~CGrapheneSet()
     {
-        pFastFilter = nullptr;
-        pSetFilter = nullptr;
-        pSetIblt = nullptr;
-    }
+        if (pFastFilter)
+        {
+            delete pFastFilter;
+            pFastFilter = nullptr;
+        }
 
-    static inline uint64_t GetCIbltVersion(uint64_t grapheneSetVersion)
-    {
-        if (grapheneSetVersion < 2)
-            return 0;
-        else if (grapheneSetVersion < 4)
-            return 1;
-        else
-            return 2;
+        if (pSetFilter)
+        {
+            delete pSetFilter;
+            pSetFilter = nullptr;
+        }
+
+        if (pSetIblt)
+        {
+            delete pSetIblt;
+            pSetIblt = nullptr;
+        }
     }
 
     ADD_SERIALIZE_METHODS;
@@ -199,19 +186,19 @@ public:
         if (version >= 3 && computeOptimized)
         {
             if (!pFastFilter)
-                pFastFilter = std::make_shared<CVariableFastFilter>(CVariableFastFilter());
+                pFastFilter = new CVariableFastFilter();
 
             READWRITE(*pFastFilter);
         }
         else
         {
             if (!pSetFilter)
-                pSetFilter = std::make_shared<CBloomFilter>(CBloomFilter());
+                pSetFilter = new CBloomFilter();
 
             READWRITE(*pSetFilter);
         }
         if (!pSetIblt)
-            pSetIblt = std::make_shared<CIblt>(CIblt(CGrapheneSet::GetCIbltVersion(version)));
+            pSetIblt = new CIblt();
         READWRITE(*pSetIblt);
     }
 };

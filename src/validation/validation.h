@@ -12,11 +12,8 @@
 #include "consensus/validation.h"
 #include "forks.h"
 #include "parallel.h"
-#include "txdebugger.h"
 #include "txmempool.h"
 #include "versionbits.h"
-
-extern std::atomic<uint64_t> nBlockSizeAtChainTip;
 
 enum DisconnectResult
 {
@@ -58,7 +55,7 @@ void CheckBlockIndex(const Consensus::Params &consensusParams);
 
 /**
  * Check whether all inputs of this transaction are valid (no double spends, scripts & sigs, amounts)
- * This does not modify the UTXO set. If pvChecks is not nullptr, script checks are pushed onto it
+ * This does not modify the UTXO set. If pvChecks is not NULL, script checks are pushed onto it
  * instead of being performed inline.
  */
 bool CheckInputs(const CTransactionRef &tx,
@@ -70,8 +67,7 @@ bool CheckInputs(const CTransactionRef &tx,
     bool cacheStore,
     ValidationResourceTracker *resourceTracker,
     std::vector<CScriptCheck> *pvChecks = nullptr,
-    unsigned char *sighashType = nullptr,
-    CValidationDebugger *debugger = nullptr);
+    unsigned char *sighashType = nullptr);
 
 /** Remove invalidity status from a block and its descendants. */
 bool ReconsiderBlock(CValidationState &state, CBlockIndex *pindex);
@@ -86,6 +82,24 @@ bool TestBlockValidity(CValidationState &state,
     bool fCheckMerkleRoot = true);
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params &consensusParams);
+//add for diskcoin -->
+CAmount GetTotalCoinByHeight(int nHeight, const Consensus::Params &consensusParams);
+//<--
+
+//diskcoin 1800 cycle
+const uint32_t uPeriod = 1800;
+// static uint64_t uBlockPeriod = 0;
+CAmount GetBlockSubsidy(int nHeight, const Consensus::Params &consensusParams);
+// CAmount GetBlockFundSubsidy(int nHeight, const Consensus::Params &consensusParams, uint64_t uPledge);
+CAmount GetBlockMinerSubsidy(int nHeight, const Consensus::Params &consensusParams, uint64_t uPledge, uint32_t uMinedBlockNum);
+// double GetNetColFactor(uint64_t nHeight, const Consensus::Params &consensusParams, uint64_t uCap);
+// double GetMinerColFactor(uint64_t uMinerCap, uint64_t uPledge);
+// double GetColFactor(double dNC, double dMC);
+// double GetSimpleColFactor(uint64_t nHeight, const Consensus::Params &consensusParams, uint64_t uPledge);
+// double GetGainFactor(uint64_t nHeight, const Consensus::Params &consensusParams, uint64_t uPledge);
+// CAmount GetLastMinedCoins(uint64_t nHeight, const Consensus::Params &consensusParams);
+CAmount GetWalletAddressPledge(const CScript &scriptPubKeyIn);
+uint32_t GetWalletAddressMinedBlock(const CScript &scriptPubKeyIn);
 
 /**
  * Determine what nVersion a new block should use.
@@ -114,8 +128,6 @@ bool ReceivedBlockTransactions(const CBlock &block,
     CBlockIndex *pindexNew,
     const CDiskBlockPos &pos);
 
-uint32_t GetBlockScriptFlags(const CBlockIndex *pindex, const Consensus::Params &consensusparams);
-
 /** Undo the effects of this block (with given index) on the UTXO set represented by coins.
  *  In case pfClean is provided, operation will try to be tolerant about errors, and *pfClean
  *  will be true if no problems were found. Otherwise, the return value will be false in case
@@ -138,8 +150,7 @@ bool DisconnectTip(CValidationState &state, const Consensus::Params &consensusPa
 bool ActivateBestChain(CValidationState &state,
     const CChainParams &chainparams,
     const CBlock *pblock = nullptr,
-    bool fParallel = false,
-    CNode *pfrom = nullptr);
+    bool fParallel = false);
 
 /**
  * Process an incoming block. This only returns after the best known valid
@@ -166,8 +177,5 @@ bool ProcessNewBlock(CValidationState &state,
     bool fForceProcessing,
     CDiskBlockPos *dbp,
     bool fParallel);
-
-//! Check whether the block associated with this index entry is pruned or not.
-bool IsBlockPruned(const CBlockIndex *pblockindex);
 
 #endif

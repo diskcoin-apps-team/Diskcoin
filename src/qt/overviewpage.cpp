@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -27,7 +27,7 @@ class TxViewDelegate : public QAbstractItemDelegate
     Q_OBJECT
 public:
     TxViewDelegate(const PlatformStyle *_platformStyle, QObject *parent = nullptr)
-        : QAbstractItemDelegate(), unit(BitcoinUnits::BCH), platformStyle(_platformStyle)
+        : QAbstractItemDelegate(), unit(BitcoinUnits::DISC), platformStyle(_platformStyle)
     {
     }
 
@@ -108,8 +108,8 @@ public:
 
 OverviewPage::OverviewPage(const PlatformStyle *platformStyle, QWidget *parent)
     : QWidget(parent), ui(new Ui::OverviewPage), clientModel(0), walletModel(0), currentBalance(-1),
-      currentUnconfirmedBalance(-1), currentImmatureBalance(-1), currentWatchOnlyBalance(-1),
-      currentWatchUnconfBalance(-1), currentWatchImmatureBalance(-1),
+      currentUnconfirmedBalance(-1), currentStakeBalance(-1), currentStaketoBalance(-1), currentUnstakingBalance(-1), currentImmatureBalance(-1), currentWatchOnlyBalance(-1),
+      currentWatchUnconfBalance(-1), currentWatchStakeBalance(-1), currentWatchStaketoBalance(-1), currentWatchUnstakingBalance(-1), currentWatchImmatureBalance(-1),
       txdelegate(new TxViewDelegate(platformStyle, this))
 {
     ui->setupUi(this);
@@ -144,35 +144,61 @@ void OverviewPage::handleTransactionClicked(const QModelIndex &index)
 }
 
 OverviewPage::~OverviewPage() { delete ui; }
+
 void OverviewPage::setBalance(const CAmount &balance,
     const CAmount &unconfirmedBalance,
+    const CAmount &StakeBalance,
+    const CAmount &staketoBalance,
+    const CAmount &unstakingBalance,
     const CAmount &immatureBalance,
     const CAmount &watchOnlyBalance,
     const CAmount &watchUnconfBalance,
+    const CAmount &watchStakeBalance,
+    const CAmount &watchStaketoBalance,
+    const CAmount &watchUnstakingBalance,
     const CAmount &watchImmatureBalance)
 {
+    LOGA("%s:%d balance=%llu", __func__, __LINE__, balance);
     int unit = walletModel->getOptionsModel()->getDisplayUnit();
     currentBalance = balance;
     currentUnconfirmedBalance = unconfirmedBalance;
+    currentStakeBalance = StakeBalance;
+    currentStaketoBalance = staketoBalance;
+    currentUnstakingBalance = unstakingBalance;
     currentImmatureBalance = immatureBalance;
     currentWatchOnlyBalance = watchOnlyBalance;
     currentWatchUnconfBalance = watchUnconfBalance;
+    currentWatchStakeBalance= watchStakeBalance;
+    currentWatchStaketoBalance= watchStaketoBalance;
+    currentWatchUnstakingBalance = watchUnstakingBalance;
     currentWatchImmatureBalance = watchImmatureBalance;
     ui->labelBalance->setText(BitcoinUnits::formatWithUnit(unit, balance, false, BitcoinUnits::separatorAlways));
     ui->labelUnconfirmed->setText(
         BitcoinUnits::formatWithUnit(unit, unconfirmedBalance, false, BitcoinUnits::separatorAlways));
+    ui->labelStake->setText(
+        BitcoinUnits::formatWithUnit(unit, StakeBalance, false, BitcoinUnits::separatorAlways));
+    ui->labelstaketo->setText(
+        BitcoinUnits::formatWithUnit(unit, staketoBalance, false, BitcoinUnits::separatorAlways));
+    ui->labelunstaking->setText(
+        BitcoinUnits::formatWithUnit(unit, unstakingBalance, false, BitcoinUnits::separatorAlways));
     ui->labelImmature->setText(
         BitcoinUnits::formatWithUnit(unit, immatureBalance, false, BitcoinUnits::separatorAlways));
     ui->labelTotal->setText(BitcoinUnits::formatWithUnit(
-        unit, balance + unconfirmedBalance + immatureBalance, false, BitcoinUnits::separatorAlways));
+        unit, balance + unconfirmedBalance + unstakingBalance + immatureBalance, false, BitcoinUnits::separatorAlways));
     ui->labelWatchAvailable->setText(
         BitcoinUnits::formatWithUnit(unit, watchOnlyBalance, false, BitcoinUnits::separatorAlways));
     ui->labelWatchPending->setText(
         BitcoinUnits::formatWithUnit(unit, watchUnconfBalance, false, BitcoinUnits::separatorAlways));
+    ui->labelWatchStake->setText(
+        BitcoinUnits::formatWithUnit(unit, watchStakeBalance, false, BitcoinUnits::separatorAlways));
+    ui->labelWatchstaketo->setText(
+        BitcoinUnits::formatWithUnit(unit, watchStaketoBalance, false, BitcoinUnits::separatorAlways));
+    ui->labelWatchunstaking->setText(
+        BitcoinUnits::formatWithUnit(unit, watchUnstakingBalance, false, BitcoinUnits::separatorAlways));
     ui->labelWatchImmature->setText(
         BitcoinUnits::formatWithUnit(unit, watchImmatureBalance, false, BitcoinUnits::separatorAlways));
     ui->labelWatchTotal->setText(BitcoinUnits::formatWithUnit(
-        unit, watchOnlyBalance + watchUnconfBalance + watchImmatureBalance, false, BitcoinUnits::separatorAlways));
+        unit, watchOnlyBalance + watchUnconfBalance + watchUnstakingBalance + watchImmatureBalance, false, BitcoinUnits::separatorAlways));
 
     // only show immature (newly mined) balance if it's non-zero, so as not to complicate things
     // for the non-mining users
@@ -193,6 +219,9 @@ void OverviewPage::updateWatchOnlyLabels(bool showWatchOnly)
     ui->lineWatchBalance->setVisible(showWatchOnly); // show watch-only balance separator line
     ui->labelWatchAvailable->setVisible(showWatchOnly); // show watch-only available balance
     ui->labelWatchPending->setVisible(showWatchOnly); // show watch-only pending balance
+    ui->labelWatchStake->setVisible(showWatchOnly); // show watch-only pending balance
+    ui->labelWatchstaketo->setVisible(showWatchOnly); // show watch-only pending balance
+    ui->labelWatchunstaking->setVisible(showWatchOnly); // show watch-only pending balance
     ui->labelWatchTotal->setVisible(showWatchOnly); // show watch-only total balance
 
     if (!showWatchOnly)
@@ -228,10 +257,10 @@ void OverviewPage::setWalletModel(WalletModel *model)
         ui->listTransactions->setModelColumn(TransactionTableModel::ToAddress);
 
         // Keep up to date with wallet
-        setBalance(model->getBalance(), model->getUnconfirmedBalance(), model->getImmatureBalance(),
-            model->getWatchBalance(), model->getWatchUnconfirmedBalance(), model->getWatchImmatureBalance());
-        connect(model, SIGNAL(balanceChanged(CAmount, CAmount, CAmount, CAmount, CAmount, CAmount)), this,
-            SLOT(setBalance(CAmount, CAmount, CAmount, CAmount, CAmount, CAmount)));
+        setBalance(model->getBalance(), model->getUnconfirmedBalance(), model->getStakeinBalance(), model->getStaketoBalance(), model->getUnstakingBalance(),model->getImmatureBalance(),
+            model->getWatchBalance(), model->getWatchUnconfirmedBalance(), model->getWatchStakeBalance(), model->getWatchStaketoBalance(), model->getWatchUnstakingBalance(),model->getWatchImmatureBalance());
+        connect(model, SIGNAL(balanceChanged(CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount)), this,
+            SLOT(setBalance(CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount, CAmount)));
 
         connect(model->getOptionsModel(), SIGNAL(displayUnitChanged(int)), this, SLOT(updateDisplayUnit()));
 
@@ -248,8 +277,8 @@ void OverviewPage::updateDisplayUnit()
     if (walletModel && walletModel->getOptionsModel())
     {
         if (currentBalance != -1)
-            setBalance(currentBalance, currentUnconfirmedBalance, currentImmatureBalance, currentWatchOnlyBalance,
-                currentWatchUnconfBalance, currentWatchImmatureBalance);
+            setBalance(currentBalance, currentUnconfirmedBalance, currentStakeBalance, currentStaketoBalance, currentUnstakingBalance,currentImmatureBalance, currentWatchOnlyBalance,
+                currentWatchUnconfBalance, currentWatchStakeBalance, currentWatchStaketoBalance, currentWatchUnstakingBalance,currentWatchImmatureBalance);
 
         // Update txdelegate->unit with the current unit
         txdelegate->unit = walletModel->getOptionsModel()->getDisplayUnit();

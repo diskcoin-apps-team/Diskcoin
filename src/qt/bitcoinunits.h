@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -57,9 +57,9 @@ public:
      */
     enum Unit
     {
-        BCH,
-        mBCH,
-        XCH
+        DISC,
+        mDISC,
+        XDISC
     };
 
     enum SeparatorStyle

@@ -1,5 +1,4 @@
 // Copyright (c) 2017-2017 The Bitcoin Core developers
-// Copyright (c) 2017-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -165,7 +164,7 @@ bool CheckTransaction(const CTransactionRef &tx, CValidationState &state)
     if (tx->vout.empty())
         return state.DoS(10, false, REJECT_INVALID, "bad-txns-vout-empty");
     // Check that the transaction doesn't have an excessive number of sigops
-    unsigned int nSigOps = GetLegacySigOpCount(tx, STANDARD_SCRIPT_VERIFY_FLAGS);
+    unsigned int nSigOps = GetLegacySigOpCount(tx, STANDARD_CHECKDATASIG_VERIFY_FLAGS);
     if (nSigOps > MAX_TX_SIGOPS)
         return state.DoS(10, false, REJECT_INVALID, "bad-txns-too-many-sigops");
 
@@ -241,6 +240,11 @@ bool Consensus::CheckTxInputs(const CTransactionRef &tx, CValidationState &state
     if (!inputs.HaveInputs(*tx))
         return state.Invalid(false, 0, "", "Inputs unavailable");
 
+    //add for diskcoin -->
+    int iin, iout;
+    uint32_t ptype = tx->GetPledgeType(iin, iout);
+    //<--
+
     CAmount nValueIn = 0;
     CAmount nFees = 0;
     int nSpendHeight = -1;
@@ -282,6 +286,49 @@ bool Consensus::CheckTxInputs(const CTransactionRef &tx, CValidationState &state
                 nValueIn += coin.out.nValue;
                 if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn))
                     return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
+                //add for diskcoin -->
+                //check is pledgeto or unpledge tx
+                CTransactionRef pretx;
+
+                if (nSpendHeight == -1) {
+                    nSpendHeight = GetSpendHeight(inputs);
+                }
+                if (coin.nHeight != nSpendHeight) {
+                    uint256 hash_block;
+                    if (!GetTransaction(prevout.hash, pretx, ::Params().GetConsensus(), hash_block, true, nullptr)) { //must found!!!
+                        return state.DoS(100, error("%s:%d bad-input", __func__, __LINE__), REJECT_INVALID, "bad-input-pretx");
+                    }
+
+                    //pledge utxo: 
+                    int pre_iin, pre_iout;
+                    uint32_t pretype = pretx->GetPledgeType(pre_iin, pre_iout);
+                    if (pretype == DCOP_PLEDGE) {
+                        if (prevout.n == pre_iin) {
+                            if (ptype != DCOP_UNPLEDGE) {
+                                LOGAF("data: %s", HexEncode(&tx->vout[2].scriptPubKey[0], tx->vout[2].scriptPubKey.size()));
+                                return state.DoS(100, error("%s:%d bad-input, hash=%s, ptype=%d, in/out %d/%d", __func__, __LINE__,
+                                 pretx->GetHash().GetHex(), pretype, pretx->vin.size(), pretx->vout.size()), REJECT_INVALID, "bad-txns-spend-of-staked");
+                            }
+                        } else if (prevout.n == pre_iout) {
+                            int nCoinHeight = coin.nHeight;
+                            if (nSpendHeight == -1) {
+                                nSpendHeight = GetSpendHeight(inputs);
+                            }
+                            if (nSpendHeight - nCoinHeight < 900) {
+                                return state.DoS(100, error("%s:%d bad-input", __func__, __LINE__), REJECT_INVALID, "bad-txns-spend-of-staked");
+                            }
+                        }
+                    } else if (pretype == DCOP_UNPLEDGE) {
+                        int nCoinHeight = coin.nHeight;
+                        if (nSpendHeight == -1) {
+                            nSpendHeight = GetSpendHeight(inputs);
+                        }
+                        if (nSpendHeight - nCoinHeight < 900) {
+                            return state.DoS(100, error("%s:%d bad-input", __func__, __LINE__), REJECT_INVALID, "bad-txns-spend-of-unstake-not900");
+                        }
+                    }
+                }
+                //<--
             }
         }
     }
@@ -298,9 +345,4 @@ bool Consensus::CheckTxInputs(const CTransactionRef &tx, CValidationState &state
     if (!MoneyRange(nFees))
         return state.DoS(100, false, REJECT_INVALID, "bad-txns-fee-outofrange");
     return true;
-}
-
-uint64_t GetTransactionSigOpCount(const CTransaction &tx, const CCoinsViewCache &coins, const uint32_t flags)
-{
-    return GetLegacySigOpCount(MakeTransactionRef(tx), flags) + GetP2SHSigOpCount(MakeTransactionRef(tx), coins, flags);
 }

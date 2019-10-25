@@ -1,5 +1,5 @@
 // Copyright (c) 2012-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -198,39 +198,11 @@ bool CCoinsViewCache::HaveCoin(const COutPoint &outpoint) const
     return (it != cacheCoins.end() && !it->second.coin.IsSpent());
 }
 
-bool CCoinsViewCache::GetCoinFromDB(const COutPoint &outpoint) const
-{
-    Coin coin;
-    if (!base->GetCoin(outpoint, coin))
-        return false;
-
-    WRITELOCK(cs_utxo);
-    CCoinsMap::iterator ret =
-        cacheCoins
-            .emplace(std::piecewise_construct, std::forward_as_tuple(outpoint), std::forward_as_tuple(std::move(coin)))
-            .first;
-    if (ret->second.coin.IsSpent())
-    {
-        // The parent only has an empty entry for this outpoint; we can consider our
-        // version as fresh.
-        ret->second.flags = CCoinsCacheEntry::FRESH;
-    }
-    cachedCoinsUsage += ret->second.coin.DynamicMemoryUsage();
-
-    if (nBestCoinHeight < ret->second.coin.nHeight)
-        nBestCoinHeight = ret->second.coin.nHeight;
-
-    return !ret->second.coin.IsSpent();
-}
-
-bool CCoinsViewCache::HaveCoinInCache(const COutPoint &outpoint, bool &fSpent) const
+bool CCoinsViewCache::HaveCoinInCache(const COutPoint &outpoint) const
 {
     READLOCK(cs_utxo);
     CCoinsMap::const_iterator it = cacheCoins.find(outpoint);
-    bool fHave = (it != cacheCoins.end());
-    if (fHave)
-        fSpent = it->second.coin.IsSpent();
-    return fHave;
+    return it != cacheCoins.end();
 }
 
 uint256 CCoinsViewCache::GetBestBlock() const
@@ -250,7 +222,7 @@ uint256 CCoinsViewCache::_GetBestBlock() const
 
 void CCoinsViewCache::SetBestBlock(const uint256 &hashBlockIn)
 {
-    WRITELOCK(cs_utxo);
+    READLOCK(cs_utxo);
     hashBlock = hashBlockIn;
 }
 
@@ -344,6 +316,12 @@ void CCoinsViewCache::Trim(size_t nTrimSize) const
     uint64_t nTrimmedByHeight = 0;
     static uint64_t nTrimHeightDelta = nBestCoinHeight * 0.80; // This is where we attempt to do our first trim
     uint64_t nTrimHeight = nBestCoinHeight - nTrimHeightDelta;
+
+    // if we've already walked the nTrimHeight all the way back as far as we can go and there is nothing to trim
+    // then no need to check further.  This should be the typical state after a block sync is completed and there is
+    // enough dbcache to hold all the coins from recent transactions in memory.
+    if (nTrimHeight == 0 && _DynamicMemoryUsage() <= nTrimSize)
+        return;
 
     // Begin first Trim loop. This loop will trim coins from cache by the coin height, removing the oldest coins first.
     // This has been proven to improve sync performance significantly for nodes that can not hold the entire dbcache
@@ -521,8 +499,7 @@ static const size_t nMaxOutputsPerBlock =
 
 CoinAccessor::CoinAccessor(const CCoinsViewCache &view, const uint256 &txid) : cache(&view), lock(cache->csCacheInsert)
 {
-    EnterCritical("CCoinsViewCache.cs_utxo", __FILE__, __LINE__, (void *)(&cache->cs_utxo), LockType::SHARED_MUTEX,
-        OwnershipType::SHARED);
+    EnterCritical("CCoinsViewCache.cs_utxo", __FILE__, __LINE__, (void *)(&cache->cs_utxo));
     cache->cs_utxo.lock_shared();
     COutPoint iter(txid, 0);
     coin = &emptyCoin;
@@ -541,8 +518,7 @@ CoinAccessor::CoinAccessor(const CCoinsViewCache &view, const uint256 &txid) : c
 CoinAccessor::CoinAccessor(const CCoinsViewCache &cacheObj, const COutPoint &output)
     : cache(&cacheObj), lock(cache->csCacheInsert)
 {
-    EnterCritical("CCoinsViewCache.cs_utxo", __FILE__, __LINE__, (void *)(&cache->cs_utxo), LockType::SHARED_MUTEX,
-        OwnershipType::SHARED);
+    EnterCritical("CCoinsViewCache.cs_utxo", __FILE__, __LINE__, (void *)(&cache->cs_utxo));
     cache->cs_utxo.lock_shared();
     it = cache->FetchCoin(output, &lock);
     if (it != cache->cacheCoins.end())
@@ -555,14 +531,13 @@ CoinAccessor::~CoinAccessor()
 {
     coin = nullptr;
     cache->cs_utxo.unlock_shared();
-    LeaveCritical(&cache->cs_utxo);
+    LeaveCritical();
 }
 
 
 CoinModifier::CoinModifier(const CCoinsViewCache &cacheObj, const COutPoint &output) : cache(&cacheObj)
 {
-    EnterCritical("CCoinsViewCache.cs_utxo", __FILE__, __LINE__, (void *)(&cache->cs_utxo), LockType::SHARED_MUTEX,
-        OwnershipType::EXCLUSIVE);
+    EnterCritical("CCoinsViewCache.cs_utxo", __FILE__, __LINE__, (void *)(&cache->cs_utxo));
     cache->cs_utxo.lock();
     it = cache->FetchCoin(output, nullptr);
     if (it != cache->cacheCoins.end())
@@ -575,7 +550,7 @@ CoinModifier::~CoinModifier()
 {
     coin = nullptr;
     cache->cs_utxo.unlock();
-    LeaveCritical(&cache->cs_utxo);
+    LeaveCritical();
 }
 
 void AddCoins(CCoinsViewCache &cache, const CTransaction &tx, int nHeight)

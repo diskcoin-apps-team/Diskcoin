@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -21,7 +21,6 @@
 #include "rpc/client.h"
 #include "rpc/server.h"
 #include "util.h"
-#include "validation/validation.h"
 
 #include <openssl/crypto.h>
 
@@ -47,7 +46,6 @@
 
 const int CONSOLE_HISTORY = 50;
 const int INITIAL_TRAFFIC_GRAPH_MINS = 30;
-const int INITIAL_TRANSACTION_GRAPH_MINS = 1440;
 const QSize FONT_RANGE(4, 40);
 const char fontSizeSettingsKey[] = "consoleFontSize";
 const QString duration_format = "H:mm:ss";
@@ -58,7 +56,7 @@ const struct
     const char *url;
     const char *source;
 } ICON_MAPPING[] = {{"cmd-request", ":/icons/tx_input"}, {"cmd-reply", ":/icons/tx_output"},
-    {"cmd-error", ":/icons/tx_output"}, {"misc", ":/icons/tx_inout"}, {nullptr, nullptr}};
+    {"cmd-error", ":/icons/tx_output"}, {"misc", ":/icons/tx_inout"}, {NULL, NULL}};
 
 /* Object for executing console RPC commands in a separate thread.
 */
@@ -228,13 +226,8 @@ void RPCExecutor::request(const QString &command)
         std::string strPrint;
         // Convert argument list to JSON objects in method-dependent way,
         // and pass it along with the method name to the dispatcher.
-        UniValue params(UniValue::VARR);
-        for (unsigned int idx = 1; idx < args.size(); idx++)
-        {
-            const std::string &strVal = args[idx];
-            params.push_back(strVal);
-        }
-        UniValue result = tableRPC.execute(args[0], params);
+        UniValue result = tableRPC.execute(
+            args[0], RPCConvertValues(args[0], std::vector<std::string>(args.begin() + 1, args.end())));
 
         // Format result reply
         if (result.isNull())
@@ -307,7 +300,6 @@ RPCConsole::RPCConsole(const PlatformStyle *_platformStyle, QWidget *parent)
 
     startExecutor();
     setTrafficGraphRange(INITIAL_TRAFFIC_GRAPH_MINS);
-    setTransactionGraphRange(INITIAL_TRANSACTION_GRAPH_MINS);
 
     ui->detailWidget->hide();
     ui->peerHeading->setText(tr("Select a peer to view detailed information."));
@@ -386,17 +378,13 @@ void RPCConsole::setClientModel(ClientModel *model)
 {
     clientModel = model;
     ui->trafficGraph->setClientModel(model);
-    ui->transactionGraph->setClientModel(model);
-    ui->groupBoxInstantaneous->setTitle(
-        "Instantaneous Rate (" + QString::number(TX_RATE_RESOLUTION_MILLIS / 1000) + "s)");
-    ui->groupBoxSmoothed->setTitle("Smoothed Rate (" + QString::number(TX_RATE_SMOOTHING_SEC, 'f', 0) + "s)");
     if (model && clientModel->getPeerTableModel() && clientModel->getBanTableModel())
     {
         // Keep up to date with client
         setNumConnections(model->getNumConnections());
         connect(model, SIGNAL(numConnectionsChanged(int)), this, SLOT(setNumConnections(int)));
 
-        setNumBlocks(model->getNumBlocks(), model->getLastBlockDate(), model->getVerificationProgress(nullptr));
+        setNumBlocks(model->getNumBlocks(), model->getLastBlockDate(), model->getVerificationProgress(NULL));
         connect(
             model, SIGNAL(numBlocksChanged(int, QDateTime, double)), this, SLOT(setNumBlocks(int, QDateTime, double)));
         connect(model, SIGNAL(timeSinceLastBlockChanged(qint64)), this, SLOT(updateTimeSinceLastBlock(qint64)));
@@ -406,8 +394,7 @@ void RPCConsole::setClientModel(ClientModel *model)
 
         connect(model, SIGNAL(mempoolSizeChanged(long, size_t)), this, SLOT(setMempoolSize(long, size_t)));
         connect(model, SIGNAL(orphanPoolSizeChanged(long)), this, SLOT(setOrphanPoolSize(long)));
-        connect(model, SIGNAL(transactionsPerSecondChanged(double, double, double)), this,
-            SLOT(setTransactionsPerSecond(double, double, double)));
+        connect(model, SIGNAL(transactionsPerSecondChanged(double)), this, SLOT(setTransactionsPerSecond(double)));
         connect(model, SIGNAL(thinBlockPropagationStatsChanged(const ThinBlockQuickStats &)), this,
             SLOT(setThinBlockPropagationStats(const ThinBlockQuickStats &)));
         connect(model, SIGNAL(compactBlockPropagationStatsChanged(const CompactBlockQuickStats &)), this,
@@ -500,6 +487,7 @@ void RPCConsole::setClientModel(ClientModel *model)
         // Provide initial values
         ui->clientVersion->setText(model->formatFullVersion());
         ui->clientUserAgent->setText(model->formatSubVersion());
+        ui->clientName->setText(model->clientName());
         ui->dataDir->setText(model->dataDir());
         ui->startupTime->setText(model->formatClientStartupTime());
         ui->networkName->setText(QString::fromStdString(Params().NetworkIDString()));
@@ -643,14 +631,6 @@ void RPCConsole::setNumBlocks(int count, const QDateTime &blockDate, double nVer
 {
     ui->numberOfBlocks->setText(QString::number(count));
     ui->lastBlockTime->setText(blockDate.toString(time_format));
-
-    ui->lastBlockSize->setText(QString::number(nBlockSizeAtChainTip.load()));
-    if (nBlockSizeAtChainTip.load() == 0)
-        ui->lastBlockSize->setText("N/A");
-    else if (nBlockSizeAtChainTip.load() < 1000000)
-        ui->lastBlockSize->setText(QString::number(nBlockSizeAtChainTip.load() / 1000.0, 'f', 2) + " KB");
-    else
-        ui->lastBlockSize->setText(QString::number(nBlockSizeAtChainTip.load() / 1000000.0, 'f', 2) + " MB");
 }
 
 void RPCConsole::updateTimeSinceLastBlock(qint64 lastBlockTime)
@@ -676,38 +656,12 @@ void RPCConsole::setMempoolSize(long numberOfTxs, size_t dynUsage)
 }
 
 void RPCConsole::setOrphanPoolSize(long numberOfTxs) { ui->orphanPoolNumberTxs->setText(QString::number(numberOfTxs)); }
-QString FormatTps(double tps)
+void RPCConsole::setTransactionsPerSecond(double nTxPerSec)
 {
-    // Format the output
-    if (tps < 100)
-        return QString::number(tps, 'f', 2);
+    if (nTxPerSec < 100)
+        ui->transactionsPerSecond->setText(QString::number(nTxPerSec, 'f', 2));
     else
-        return QString::number((uint64_t)tps);
-}
-
-void RPCConsole::setTransactionsPerSecond(double smoothedTps, double instantaneousTps, double peakTps)
-{
-    ui->transactionsPerSecond->setText(FormatTps(smoothedTps) + "  (peak: " + FormatTps(peakTps) + ")");
-
-    QString displayWindowText = ui->transactionGraph->getDisplayWindowLabelText();
-    ui->labelInstantaneousPeakDisplayed->setText(displayWindowText);
-    ui->labelInstantaneousAvgDisplayed->setText(displayWindowText);
-    ui->labelSmoothedPeakDisplayed->setText(displayWindowText);
-    ui->labelSmoothedAvgDisplayed->setText(displayWindowText);
-
-    ui->instantaneousPeakRuntime->setText(FormatTps(ui->transactionGraph->getInstantaneousTpsPeak_Runtime()));
-    ui->instantaneousPeakSampled->setText(FormatTps(ui->transactionGraph->getInstantaneousTpsPeak_Sampled()));
-    ui->instantaneousPeakDisplayed->setText(FormatTps(ui->transactionGraph->getInstantaneousTpsPeak_Displayed()));
-    ui->instantaneousAvgRuntime->setText(FormatTps(ui->transactionGraph->getInstantaneousTpsAverage_Runtime()));
-    ui->instantaneousAvgSampled->setText(FormatTps(ui->transactionGraph->getInstantaneousTpsAverage_Sampled()));
-    ui->instantaneousAvgDisplayed->setText(FormatTps(ui->transactionGraph->getInstantaneousTpsAverage_Displayed()));
-
-    ui->smoothedPeakRuntime->setText(FormatTps(ui->transactionGraph->getSmoothedTpsPeak_Runtime()));
-    ui->smoothedPeakSampled->setText(FormatTps(ui->transactionGraph->getSmoothedTpsPeak_Sampled()));
-    ui->smoothedPeakDisplayed->setText(FormatTps(ui->transactionGraph->getSmoothedTpsPeak_Displayed()));
-    ui->smoothedAvgRuntime->setText(FormatTps(ui->transactionGraph->getSmoothedTpsAverage_Runtime()));
-    ui->smoothedAvgSampled->setText(FormatTps(ui->transactionGraph->getSmoothedTpsAverage_Sampled()));
-    ui->smoothedAvgDisplayed->setText(FormatTps(ui->transactionGraph->getSmoothedTpsAverage_Displayed()));
+        ui->transactionsPerSecond->setText(QString::number((uint64_t)nTxPerSec));
 }
 
 void RPCConsole::setThinBlockPropagationStats(const ThinBlockQuickStats &thin)
@@ -904,27 +858,6 @@ void RPCConsole::updateTrafficStats(quint64 totalBytesIn, quint64 totalBytesOut)
     ui->lblBytesOut->setText(FormatBytes(totalBytesOut));
 }
 
-void RPCConsole::on_sldTpsGraphRange_valueChanged(int value)
-{
-    // The first hour is in 5 minute steps
-    static const int firstMultiplier = 5;
-    // All subsequent hours are in 15 minute steps
-    static const int secondMultiplier = 15;
-
-    int mins;
-    if (value <= 12)
-        mins = value * firstMultiplier;
-    else
-        mins = 60 + (value - 12) * secondMultiplier;
-    setTransactionGraphRange(mins);
-}
-
-void RPCConsole::setTransactionGraphRange(int mins)
-{
-    ui->transactionGraph->setTpsGraphRangeMins(mins);
-    ui->lblTpsGraphRange->setText(GUIUtil::formatDurationStr(mins * 60));
-}
-
 void RPCConsole::peerSelected(const QItemSelection &selected, const QItemSelection &deselected)
 {
     Q_UNUSED(deselected);
@@ -942,7 +875,7 @@ void RPCConsole::peerLayoutChanged()
     if (!clientModel || !clientModel->getPeerTableModel())
         return;
 
-    const CNodeCombinedStats *stats = nullptr;
+    const CNodeCombinedStats *stats = NULL;
     bool fUnselect = false;
     bool fReselect = false;
 
@@ -1017,8 +950,7 @@ void RPCConsole::updateNodeDetail(const CNodeCombinedStats *stats)
         stats->nodeStats.nLastRecv ? GUIUtil::formatDurationStr(GetTime() - stats->nodeStats.nLastRecv) : tr("never"));
     ui->peerBytesSent->setText(FormatBytes(stats->nodeStats.nSendBytes));
     ui->peerBytesRecv->setText(FormatBytes(stats->nodeStats.nRecvBytes));
-    ui->peerConnTime->setText(
-        GUIUtil::formatDurationStr((GetStopwatchMicros() - stats->nodeStats.nStopwatchConnected) / 1000000));
+    ui->peerConnTime->setText(GUIUtil::formatDurationStr(GetTime() - stats->nodeStats.nTimeConnected));
     ui->peerPingTime->setText(GUIUtil::formatPingTime(stats->nodeStats.dPingTime));
     ui->peerPingWait->setText(GUIUtil::formatPingTime(stats->nodeStats.dPingWait));
     ui->timeoffset->setText(GUIUtil::formatTimeOffset(stats->nodeStats.nTimeOffset));
@@ -1054,10 +986,6 @@ void RPCConsole::updateNodeDetail(const CNodeCombinedStats *stats)
 void RPCConsole::resizeEvent(QResizeEvent *event) { QWidget::resizeEvent(event); }
 void RPCConsole::showEvent(QShowEvent *event)
 {
-    // restore column state
-    GUIUtil::restoreColumnConfiguration("nPeersTable", ui->peerWidget->horizontalHeader());
-    GUIUtil::restoreColumnConfiguration("nBannedPeersTable", ui->banlistWidget->horizontalHeader());
-
     QWidget::showEvent(event);
 
     if (!clientModel || !clientModel->getPeerTableModel())
@@ -1076,10 +1004,6 @@ void RPCConsole::hideEvent(QHideEvent *event)
 
     // stop PeerTableModel auto refresh
     clientModel->getPeerTableModel()->stopAutoRefresh();
-
-    // save column state
-    GUIUtil::saveColumnConfiguration("nPeersTable", ui->peerWidget->horizontalHeader());
-    GUIUtil::saveColumnConfiguration("nBannedPeersTable", ui->banlistWidget->horizontalHeader());
 }
 
 void RPCConsole::showPeersTableContextMenu(const QPoint &point)

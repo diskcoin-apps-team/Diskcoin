@@ -2,7 +2,7 @@
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-DIST_SUBDIRS = rsm secp256k1 univalue
+DIST_SUBDIRS = secp256k1 univalue
 
 AM_LDFLAGS = $(PTHREAD_CFLAGS) $(LIBTOOL_LDFLAGS) $(HARDENED_LDFLAGS)
 AM_LIBTOOLFLAGS = --preserve-dup-deps
@@ -28,18 +28,15 @@ AM_CXXFLAGS += -O0 -g -rdynamic
 AM_CPPFLAGS += -O0 -g -rdynamic
 AM_LDFLAGS  += -O0 -g -rdynamic
 endif
-if ENABLE_JAVACASHLIB
-JNI_CXXFLAGS = -I$(JAVA_HOME)/include/linux -I$(JAVA_HOME)/include -DJAVA
-endif
-
 EXTRA_LIBRARIES =
+# libtcmalloc.a
 
 BITCOIN_CONFIG_INCLUDES=-I$(builddir)/config
 BITCOIN_INCLUDES=-I$(builddir) -I$(builddir)/obj $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
 BITCOIN_INCLUDES += -I$(srcdir)/secp256k1/include
 BITCOIN_INCLUDES += -I$(srcdir)/univalue/include
-BITCOIN_INCLUDES += -I$(srcdir)/rsm/include
+BITCOIN_INCLUDES += -I$(srcdir)/rsm
 
 LIBBITCOIN_SERVER=libbitcoin_server.a
 LIBBITCOIN_COMMON=libbitcoin_common.a
@@ -48,9 +45,10 @@ LIBBITCOIN_CLI=libbitcoin_cli.a
 LIBBITCOIN_UTIL=libbitcoin_util.a
 LIBBITCOIN_CRYPTO=crypto/libbitcoin_crypto.a
 LIBBITCOINQT=qt/libbitcoinqt.a
-LIBRSM=rsm/librsm.la
 LIBSECP256K1=secp256k1/libsecp256k1.la
 LIBUNIVALUE=univalue/libunivalue.la
+
+LIBSHABAL=libbitcoin_shabal.a
 
 if ENABLE_ZMQ
 LIBBITCOIN_ZMQ=libbitcoin_zmq.a
@@ -62,9 +60,6 @@ endif
 if ENABLE_WALLET
 LIBBITCOIN_WALLET=libbitcoin_wallet.a
 endif
-
-$(LIBRSM): $(wildcard rsm/lib/*) $(wildcard rsm/include/*)
-	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
 
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
 	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
@@ -82,7 +77,8 @@ EXTRA_LIBRARIES += \
   $(LIBBITCOIN_SERVER) \
   $(LIBBITCOIN_CLI) \
   $(LIBBITCOIN_WALLET) \
-  $(LIBBITCOIN_ZMQ)
+  $(LIBBITCOIN_ZMQ) \
+  $(LIBSHABAL)
 
 lib_LTLIBRARIES = $(LIBBITCOINCASH) $(LIBBITCOINCONSENSUS)
 
@@ -92,11 +88,11 @@ TESTS =
 BENCHMARKS =
 
 if BUILD_BITCOIND
-  bin_PROGRAMS += bitcoind
+  bin_PROGRAMS += diskcoind
 endif
 
 if BUILD_BITCOIN_UTILS
-  bin_PROGRAMS += bitcoin-cli bitcoin-tx bitcoin-miner
+  bin_PROGRAMS += diskcoin-cli diskcoin-tx bitcoin-miner
 endif
 
 .PHONY: FORCE check-symbols check-security check-formatting
@@ -107,12 +103,10 @@ BITCOIN_CORE_H = \
   base58.h \
   bandb.h \
   banentry.h \
-  bitmanip.h \
   blockrelay/blockrelay_common.h \
   blockrelay/compactblock.h \
   blockrelay/graphene.h \
   blockrelay/graphene_set.h \
-  blockrelay/mempool_sync.h \
   blockrelay/thinblock.h \
   blockstorage/blockleveldb.h \
   blockstorage/blockstorage.h \
@@ -143,14 +137,10 @@ BITCOIN_CORE_H = \
   core_io.h \
   core_memusage.h \
   cuckoocache.h \
-  deadlock-detection/locklocation.h \
-  deadlock-detection/lockorder.h \
-  deadlock-detection/threaddeadlock.h \
   dosman.h \
   dstencode.h \
   expedited.h \
   electrum/electrs.h \
-  electrum/electrumrpcinfo.h \
   electrum/electrumserver.h \
   fast-cpp-csv-parser/csv.h \
   fastfilter.h \
@@ -160,7 +150,6 @@ BITCOIN_CORE_H = \
   httpserver.h \
   iblt.h \
   iblt_params.h \
-  index/txindex.h \
   init.h \
   key.h \
   keystore.h \
@@ -184,8 +173,8 @@ BITCOIN_CORE_H = \
   protocol.h \
   random.h \
   reverse_iterator.h \
+  rsm/recursive_shared_mutex.h \
   reverselock.h \
-  rpc/blockchain.h \
   rpc/client.h \
   rpc/protocol.h \
   rpc/server.h \
@@ -210,7 +199,6 @@ BITCOIN_CORE_H = \
   torcontrol.h \
   txadmission.h \
   txdb.h \
-  txdebugger.h \
   txmempool.h \
   txorphanpool.h \
   ui_interface.h \
@@ -239,7 +227,12 @@ BITCOIN_CORE_H = \
   zmq/zmqabstractnotifier.h \
   zmq/zmqconfig.h\
   zmq/zmqnotificationinterface.h \
-  zmq/zmqpublishnotifier.h
+  zmq/zmqpublishnotifier.h  \
+  shabal/sph_shabal.h \
+  shabal/sph_types.h \
+  shabal/stakedb.h \
+  shabal/linux_list.h \
+  shabal/bpool.h
 
 
 obj/build.h: FORCE
@@ -266,7 +259,6 @@ libbitcoin_server_a_SOURCES = \
   blockrelay/compactblock.cpp \
   blockrelay/graphene.cpp \
   blockrelay/graphene_set.cpp \
-  blockrelay/mempool_sync.cpp \
   blockrelay/thinblock.cpp \
   blockstorage/blockleveldb.cpp \
   blockstorage/sequential_files.cpp \
@@ -279,13 +271,11 @@ libbitcoin_server_a_SOURCES = \
   dosman.cpp \
   expedited.cpp \
   electrum/electrs.cpp \
-  electrum/electrumrpcinfo.cpp \
   electrum/electrumserver.cpp \
   forks_csv.cpp \
   httprpc.cpp \
   httpserver.cpp \
   iblt.cpp \
-  index/txindex.cpp \
   init.cpp \
   dbwrapper.cpp \
   main.cpp \
@@ -301,7 +291,6 @@ libbitcoin_server_a_SOURCES = \
   pow.cpp \
   rest.cpp \
   rpc/blockchain.cpp \
-  rpc/client.cpp \
   rpc/electrum.cpp \
   rpc/mining.cpp \
   rpc/misc.cpp \
@@ -332,6 +321,13 @@ libbitcoin_server_a_SOURCES = \
   xversionmessage.cpp \
   $(BITCOIN_CORE_H)
 
+libbitcoin_shabal_a_CPPFLAGS = $(BITCOIN_INCLUDES)
+libbitcoin_shabal_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+libbitcoin_shabal_a_CFLAGS = $(BITCOIN_INCLUDES) $(AM_CXXFLAGS) $(PIE_FLAGS) -std=gnu99
+libbitcoin_shabal_a_SOURCES = \
+  shabal/calc_dl.c \
+  shabal/stakedb.cpp
+
 if ENABLE_ZMQ
 libbitcoin_zmq_a_CPPFLAGS = $(BITCOIN_INCLUDES) $(ZMQ_CFLAGS)
 libbitcoin_zmq_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -358,37 +354,26 @@ libbitcoin_wallet_a_SOURCES = \
 libbitcoincash_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
 libbitcoincash_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
+# base58.cpp
+#  base58.h
+
 libbitcoincash_a_SOURCES = \
   cashlib/cashlib.cpp \
-  base58.cpp \
-  base58.h \
-  chainparams.cpp \
-  chainparams.h \
-  chainparamsbase.cpp \
-  chainparamsbase.h \
   script/sigcommon.cpp \
-  hashwrapper.cpp \
-  hashwrapper.h \
+  hash.cpp \
+  hash.h \
   key.cpp \
   key.h \
-  primitives/block.cpp \
-  primitives/block.h \
   primitives/transaction.cpp \
   primitives/transaction.h \
   pubkey.cpp \
   pubkey.h \
   random.cpp \
   random.h \
-  script/bitfield.cpp \
-  script/bitfield.h \
   script/interpreter.cpp \
   script/interpreter.h \
-  script/standard.cpp \
-  script/standard.h \
   script/script.cpp \
   script/script.h \
-  script/sign.cpp \
-  script/sign.h \
   support/pagelocker.cpp \
   support/pagelocker.h \
   support/cleanse.cpp \
@@ -397,19 +382,8 @@ libbitcoincash_a_SOURCES = \
   uint256.h \
   utilstrencodings.cpp \
   utilstrencodings.h \
-  cashaddrenc.cpp \
-  cashaddrenc.h \
-  cashaddr.cpp \
-  cashaddr.h \
   utiltime.cpp \
-  utiltime.h \
-  consensus/merkle.cpp \
-  arith_uint256.cpp \
-  arith_uint256.h \
-  bloom.cpp \
-  bloom.h \
-  streams.h
-
+  utiltime.h
 
 # crypto primitives library
 crypto_libbitcoin_crypto_a_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_CONFIG_INCLUDES)
@@ -446,8 +420,8 @@ libbitcoin_consensus_a_SOURCES = \
   consensus/merkle.h \
   consensus/params.h \
   consensus/validation.h \
-  hashwrapper.cpp \
-  hashwrapper.h \
+  hash.cpp \
+  hash.h \
   prevector.h \
   primitives/block.cpp \
   primitives/block.h \
@@ -456,8 +430,6 @@ libbitcoin_consensus_a_SOURCES = \
   pubkey.cpp \
   pubkey.h \
   script/bitcoinconsensus.cpp \
-  script/bitfield.cpp \
-  script/bitfield.h \
   script/interpreter.cpp \
   script/interpreter.h \
   script/sigcommon.cpp \
@@ -513,11 +485,9 @@ libbitcoin_util_a_SOURCES = \
   compat/glibc_sanity.cpp \
   compat/glibcxx_sanity.cpp \
   compat/strnlen.cpp \
-  deadlock-detection/locklocation.cpp \
-  deadlock-detection/lockorder.cpp \
-  deadlock-detection/threaddeadlock.cpp \
   fs.cpp \
   random.cpp \
+  rsm/recursive_shared_mutex.cpp \
   rpc/protocol.cpp \
   support/cleanse.cpp \
   sync.cpp \
@@ -544,71 +514,70 @@ nodist_libbitcoin_util_a_SOURCES = $(srcdir)/obj/build.h
 #
 
 # bitcoind binary #
-bitcoind_SOURCES = bitcoind.cpp
-bitcoind_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
-bitcoind_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-bitcoind_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+diskcoind_SOURCES = bitcoind.cpp
+diskcoind_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
+diskcoind_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+diskcoind_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
 if TARGET_WINDOWS
-bitcoind_SOURCES += bitcoind-res.rc
+diskcoind_SOURCES += bitcoind-res.rc
 endif
 
-bitcoind_LDADD = \
+diskcoind_LDADD = \
   $(LIBBITCOIN_SERVER) \
   $(LIBBITCOIN_COMMON) \
   $(LIBUNIVALUE) \
   $(LIBBITCOIN_UTIL) \
   $(LIBBITCOIN_WALLET) \
   $(LIBBITCOIN_ZMQ) \
+  $(LIBSHABAL) \
   $(LIBBITCOIN_CONSENSUS) \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBLEVELDB) \
   $(LIBLEVELDB_SSE42) \
   $(LIBMEMENV) \
-  $(LIBRSM) \
   $(LIBSECP256K1)
 
-bitcoind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+diskcoind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
 
 # bitcoin-cli binary #
-bitcoin_cli_SOURCES = bitcoin-cli.cpp
-bitcoin_cli_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS)
-bitcoin_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-bitcoin_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+diskcoin_cli_SOURCES = bitcoin-cli.cpp
+diskcoin_cli_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) $(EVENT_CFLAGS)
+diskcoin_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+diskcoin_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
 if TARGET_WINDOWS
-bitcoin_cli_SOURCES += bitcoin-cli-res.rc
+diskcoin_cli_SOURCES += bitcoin-cli-res.rc
 endif
 
-bitcoin_cli_LDADD = \
+diskcoin_cli_LDADD = \
   $(LIBBITCOIN_CLI) \
   $(LIBUNIVALUE) \
-  $(LIBBITCOIN_UTIL) \
-  $(LIBRSM)
+  $(LIBBITCOIN_UTIL)
 
-bitcoin_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
+diskcoin_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
 #
 
 # bitcoin-tx binary #
-bitcoin_tx_SOURCES = bitcoin-tx.cpp
-bitcoin_tx_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
-bitcoin_tx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-bitcoin_tx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+diskcoin_tx_SOURCES = bitcoin-tx.cpp
+diskcoin_tx_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
+diskcoin_tx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+diskcoin_tx_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
 if TARGET_WINDOWS
-bitcoin_tx_SOURCES += bitcoin-tx-res.rc
+diskcoin_tx_SOURCES += bitcoin-tx-res.rc
 endif
 
-bitcoin_tx_LDADD = \
+diskcoin_tx_LDADD = \
   $(LIBUNIVALUE) \
   $(LIBBITCOIN_COMMON) \
   $(LIBBITCOIN_UTIL) \
   $(LIBBITCOIN_CONSENSUS) \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBSECP256K1) \
-  $(LIBRSM)
+  $(LIBSHABAL)
 
-bitcoin_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS)
+diskcoin_tx_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS)
 #
 
 # bitcoin-miner binary #
@@ -631,8 +600,7 @@ bitcoin_miner_LDADD = \
   $(LIBBITCOIN_CLI) \
   $(LIBBITCOIN_CRYPTO) \
   $(LIBUNIVALUE) \
-  $(LIBBITCOIN_UTIL) \
-  $(LIBRSM)
+  $(LIBBITCOIN_UTIL)
 
 bitcoin_miner_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
 #
@@ -647,7 +615,7 @@ endif
 
 libbitcoincash_la_LDFLAGS = $(AM_LDFLAGS) $(SSL_LIBS) $(CRYPTO_LIBS) $(BOOST_LIBS) -no-undefined $(RELDFLAGS)
 libbitcoincash_la_LIBADD = $(LIBSECP256K1)
-libbitcoincash_la_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES) -I$(BOOST_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include $(JNI_CXXFLAGS) -DBUILD_BITCOIN_INTERNAL
+libbitcoincash_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(BOOST_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_BITCOIN_INTERNAL
 libbitcoincash_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
 endif
@@ -689,13 +657,13 @@ CLEANFILES += univalue/*.gcda univalue/*.gcno
 CLEANFILES += wallet/*.gcda wallet/*.gcno
 CLEANFILES += wallet/test/*.gcda wallet/test/*.gcno
 CLEANFILES += zmq/*.gcda zmq/*.gcno
+CLEANFILES += shabal/*.gcda shabal/*.gcno
 
 DISTCLEANFILES = obj/build.h xversionkeys.h
 
 EXTRA_DIST = leveldb $(CTAES_DIST) $(srcdir)/xversionkeys.dat $(top_srcdir)/contrib/devtools/xversionkeys.py
 
 clean-local:
-	-$(MAKE) -C rsm clean
 	-$(MAKE) -C secp256k1 clean
 	-$(MAKE) -C univalue clean
 	-rm -f leveldb/*/*.gcda leveldb/*/*.gcno leveldb/helpers/memenv/*.gcda leveldb/helpers/memenv/*.gcno
@@ -734,9 +702,9 @@ if EMBEDDED_LEVELDB
 include Makefile.leveldb.include
 endif
 
-if ENABLE_TESTS
-include Makefile.test.include
-endif
+#if ENABLE_TESTS
+#include Makefile.test.include
+#endif
 
 if ENABLE_BENCH
 include Makefile.bench.include
@@ -746,6 +714,6 @@ if ENABLE_QT
 include Makefile.qt.include
 endif
 
-if ENABLE_QT_TESTS
-include Makefile.qttest.include
-endif
+#if ENABLE_QT_TESTS
+#include Makefile.qttest.include
+#endif

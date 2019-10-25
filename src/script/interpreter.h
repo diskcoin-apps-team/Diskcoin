@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -35,7 +35,6 @@ enum
     SCRIPT_VERIFY_NONE = 0,
 
     // Evaluate P2SH subscripts (softfork safe, BIP16).
-    // Note: The Segwit Recovery feature is an exception to P2SH
     SCRIPT_VERIFY_P2SH = (1U << 0),
 
     // Passing a non-strict-DER signature or one with undefined hashtype to a checksig operation causes script failure.
@@ -78,7 +77,6 @@ enum
     // "Exactly one stack element must remain, and when interpreted as a boolean, it must be true".
     // (softfork safe, BIP62 rule 6)
     // Note: CLEANSTACK should never be used without P2SH.
-    // Note: The Segwit Recovery feature is an exception to CLEANSTACK
     SCRIPT_VERIFY_CLEANSTACK = (1U << 8),
 
     // Verify CHECKLOCKTIMEVERIFY
@@ -113,19 +111,20 @@ enum
     // https:
     SCRIPT_ENABLE_REPLAY_PROTECTION = (1U << 17),
 
-    // Count sigops for OP_CHECKDATASIG and variant. The interpreter treats
-    // OP_CHECKDATASIG(VERIFY) as always valid, this flag only affects sigops
-    // counting.
+    // Is OP_CHECKDATASIG and variant are enabled.
     //
     SCRIPT_ENABLE_CHECKDATASIG = (1U << 18),
 
-    // The exception to CLEANSTACK and P2SH for the recovery of coins sent
-    // to p2sh segwit addresses is not allowed.
-    SCRIPT_DISALLOW_SEGWIT_RECOVERY = (1U << 20),
+    // Are Schnorr signatures enabled for OP_CHECK(DATA)SIG(VERIFY) and
+    // 65-byte signatures banned for OP_CHECKMULTISIG(VERIFY)?
+    //
+    SCRIPT_ENABLE_SCHNORR = (1U << 19),
 
-    // Whether to allow new OP_CHECKMULTISIG logic to trigger. (new multisig
-    // logic verifies faster, and only allows Schnorr signatures)
-    SCRIPT_ENABLE_SCHNORR_MULTISIG = (1U << 21),
+    // Allows the recovery of coins sent to p2sh segwit addresses
+    SCRIPT_ALLOW_SEGWIT_RECOVERY = (1U << 20),
+
+    // Are OP_INVERT, OP_MUL, OP_LSHIFT, OP_RSHIFT enabled?
+    SCRIPT_ENABLE_MUL_SHIFT_INVERT_OPCODES = (1U << 21),
 };
 
 bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError *serror);
@@ -150,7 +149,7 @@ uint256 SignatureHash(const CScript &scriptCode,
     unsigned int nIn,
     uint32_t nHashType,
     const CAmount &amount,
-    size_t *nHashedOut = nullptr);
+    size_t *nHashedOut = NULL);
 
 class BaseSignatureChecker
 {
@@ -341,15 +340,15 @@ bool EvalScript(std::vector<std::vector<unsigned char> > &stack,
     unsigned int flags,
     unsigned int maxOps,
     const BaseSignatureChecker &checker,
-    ScriptError *error = nullptr,
-    unsigned char *sighashtype = nullptr);
+    ScriptError *error = NULL,
+    unsigned char *sighashtype = NULL);
 bool VerifyScript(const CScript &scriptSig,
     const CScript &scriptPubKey,
     unsigned int flags,
     unsigned int maxOps,
     const BaseSignatureChecker &checker,
-    ScriptError *error = nullptr,
-    unsigned char *sighashtype = nullptr);
+    ScriptError *error = NULL,
+    unsigned char *sighashtype = NULL);
 
 // string prefixed to data when validating signed messages via RPC call.  This ensures
 // that the signature was intended for use on this blockchain.

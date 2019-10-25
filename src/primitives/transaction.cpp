@@ -1,12 +1,12 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "primitives/transaction.h"
 
-#include "hashwrapper.h"
+#include "hash.h"
 #include "policy/policy.h"
 #include "tinyformat.h"
 #include "utilstrencodings.h"
@@ -103,7 +103,35 @@ bool CTransaction::IsEquivalentTo(const CTransaction &tx) const
         tx2.vin[i].scriptSig = CScript();
     return CTransaction(tx1) == CTransaction(tx2);
 }
+//add for diskcoin -->
+uint32_t CTransaction::GetPledgeType(int &iin, int &iout) const
+{
+    if (vout.size() < 3) {
+        return DCOP_NONE;
+    }
+    
+    for (auto &out : vout) {
+        auto &vc = out.scriptPubKey;
+        if ( (vc.size() >= 9) && (vc[0] == OP_RETURN) && (vc[1] == 7)) {
+            if (vc[2]=='d'&&vc[3]=='c'&&vc[4]=='o'&&vc[5]=='p') {
+                if (vc[6]==DCOP_PLEDGE) {
+                    iin = 0;//0;//vc[7];
+                    iout = 1;//vc[8];
 
+                    return DCOP_PLEDGE;
+                }
+                if (vc[6]==DCOP_UNPLEDGE) {
+                    iin = 0;
+                    iout = 1;
+                    return DCOP_UNPLEDGE;
+                }
+                //error??
+            }       
+        }
+    }
+    return DCOP_NONE;
+}
+//<--
 CAmount CTransaction::GetValueOut() const
 {
     CAmount nValueOut = 0;

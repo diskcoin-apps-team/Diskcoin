@@ -161,9 +161,9 @@ make $MAKE_CORES
 # Strip symbol tables
 if [ -n "$STRIP" ]; then
 	echo 'Stripping exeutables'
-	strip src/bitcoin-tx.exe
-	strip src/bitcoin-cli.exe
-	strip src/bitcoin-miner.exe
-	strip src/bitcoind.exe
-	strip src/qt/bitcoin-qt.exe
+	strip src/diskcoin-tx.exe
+	strip src/diskcoin-cli.exe
+	strip src/diskcoin-miner.exe
+	strip src/diskcoin.exe
+	strip src/qt/diskcoin-qt.exe
 fi

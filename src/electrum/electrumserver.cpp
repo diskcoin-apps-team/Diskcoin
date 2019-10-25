@@ -1,9 +1,5 @@
-// Copyright (c) 2019 The Bitcoin Unlimited developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #include "electrum/electrumserver.h"
 #include "electrum/electrs.h"
-#include "init.h"
 #include "util.h"
 #include "utilprocess.h"
 
@@ -43,35 +39,27 @@ static void log_args(const std::string &path, const std::vector<std::string> &ar
 
 namespace electrum
 {
-ElectrumServer::ElectrumServer() : started(false), stop_requested(false) {}
+ElectrumServer::ElectrumServer() {}
 ElectrumServer::~ElectrumServer()
 {
     if (started)
         Stop();
-
-    if (process_thread.joinable())
-    {
-        process_thread.join();
-    }
 }
 
 //! called when electrs produces a line in stdout/stderr
 static void callb_logger(const std::string &line) { LOGA("Electrum: %s", line); }
 bool ElectrumServer::Start(int rpcport, const std::string &network)
 {
+    DbgAssert(!started, return false);
     if (!GetBoolArg("-electrum", false))
     {
         LOGA("Electrum: Disabled. Not starting server.");
         return true;
     }
-    return Start(electrs_path(), electrs_args(rpcport, network));
-}
-bool ElectrumServer::Start(const std::string &path, const std::vector<std::string> &args)
-{
-    stop_requested = false;
-    DbgAssert(!started, return false);
+
+    auto path = electrs_path();
+    auto args = electrs_args(rpcport, network);
     log_args(path, args);
-    std::unique_lock<std::mutex> lock(process_cs);
     process.reset(new SubProcess(path, args, callb_logger, callb_logger));
 
     process_thread = std::thread([this]() {
@@ -89,20 +77,9 @@ bool ElectrumServer::Start(const std::string &path, const std::vector<std::strin
         {
             LOGA("Electrum: Unknown error running server");
         }
-        this->started = false;
-
-        if (!stop_requested && GetBoolArg("-electrum.shutdownonerror", false))
-        {
-            // The electrum server exit was not initiated by us, so it
-            // must have stopped due to some error.
-
-            LOGA("Electrum: Bitcoin Unlimited is configured to exit when "
-                 "electrum exits on error. Initiating shutdown.");
-            StartShutdown();
-        }
     });
-    started = startup_check(*process);
-    return started;
+    started = true;
+    return startup_check(*process);
 }
 
 static void stop_server(SubProcess &p)
@@ -144,14 +121,12 @@ static void stop_server(SubProcess &p)
 
 void ElectrumServer::Stop()
 {
-    stop_requested = true;
     if (!started)
     {
         return;
     }
     try
     {
-        std::unique_lock<std::mutex> lock(process_cs);
         stop_server(*process);
     }
     catch (const std::exception &e)
@@ -160,16 +135,6 @@ void ElectrumServer::Stop()
     }
     process_thread.join();
     started = false;
-}
-
-bool ElectrumServer::IsRunning() const
-{
-    std::unique_lock<std::mutex> lock(process_cs);
-    if (!bool(process))
-    {
-        return false;
-    }
-    return process->IsRunning();
 }
 
 ElectrumServer &ElectrumServer::Instance()

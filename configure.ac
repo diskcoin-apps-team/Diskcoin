@@ -9,25 +9,25 @@ esac
 
 dnl require autoconf 2.60 (AS_ECHO/AS_ECHO_N)
 AC_PREREQ([2.60])
-define(_CLIENT_VERSION_MAJOR, 1)
-define(_CLIENT_VERSION_MINOR, 7)
-define(_CLIENT_VERSION_REVISION, 0)
-define(_CLIENT_VERSION_BUILD, 0)  # version 99 here indicates an unreleased version
+define(_CLIENT_VERSION_MAJOR, 0)
+define(_CLIENT_VERSION_MINOR, 1)
+define(_CLIENT_VERSION_REVISION, 7)
+define(_CLIENT_VERSION_BUILD, 9)  # version 99 here indicates an unreleased version
 define(_CLIENT_VERSION_RC, 0)
 define(_CLIENT_VERSION_IS_RELEASE, true)
 define(_COPYRIGHT_YEAR, 2019)
 define(_COPYRIGHT_HOLDERS,[The %s developers])
-define(_COPYRIGHT_HOLDERS_SUBSTITUTION,[Bitcoin Bitcoin XT and Bitcoin Unlimited])
-AC_INIT([Bitcoin Unlimited Cash Edition],m4_join([.],_CLIENT_VERSION_MAJOR,_CLIENT_VERSION_MINOR,_CLIENT_VERSION_REVISION,_CLIENT_VERSION_BUILD)m4_if(_CLIENT_VERSION_RC, [0], [], [rc]_CLIENT_VERSION_RC),[https://github.com/BitcoinUnlimited/BitcoinUnlimited/issues],[BUcash])
+define(_COPYRIGHT_HOLDERS_SUBSTITUTION,[Bitcoin Bitcoin XT and Bitcoin Unlimited and Diskcoin Group])
+AC_INIT([Diskcoin],m4_join([.],_CLIENT_VERSION_MAJOR,_CLIENT_VERSION_MINOR,_CLIENT_VERSION_REVISION,_CLIENT_VERSION_BUILD)m4_if(_CLIENT_VERSION_RC, [0], [], [rc]_CLIENT_VERSION_RC),[https://diskcoin.org/diskcoin/issues],[Diskcoin])
 AC_CONFIG_SRCDIR([src/main.cpp])
 AC_CONFIG_HEADERS([src/config/bitcoin-config.h])
 AC_CONFIG_AUX_DIR([build-aux])
 AC_CONFIG_MACRO_DIR([build-aux/m4])
 
-BITCOIN_DAEMON_NAME=bitcoind
-BITCOIN_GUI_NAME=bitcoin-qt
-BITCOIN_CLI_NAME=bitcoin-cli
-BITCOIN_TX_NAME=bitcoin-tx
+BITCOIN_DAEMON_NAME=diskcoind
+BITCOIN_GUI_NAME=diskcoin-qt
+BITCOIN_CLI_NAME=diskcoin-cli
+BITCOIN_TX_NAME=diskcoin-tx
 
 dnl Unless the user specified ARFLAGS, force it to be cr
 AC_ARG_VAR(ARFLAGS, [Flags for the archiver, defaults to <cr> if not set])
@@ -186,12 +186,6 @@ AC_ARG_ENABLE([gprof],
   [use_gprof=yes],
   [use_gprof=no])
 
-AC_ARG_ENABLE([javacashlib],
-  [AS_HELP_STRING([--enable-javacashlib],
-  [enable java bindings for libbitcoincash (default is no)])],
-  [use_javacashlib=yes],
-  [use_javacashlib=no])
-
 AC_ARG_ENABLE([mutrace],
   [AS_HELP_STRING([--enable-mutrace],
   [enable mutex profiler build (default is no)])],
@@ -247,7 +241,7 @@ AC_LANG_PUSH([C++])
 AX_CHECK_COMPILE_FLAG([-Werror],[CXXFLAG_WERROR="-Werror"],[CXXFLAG_WERROR=""])
 
 if test "x$enable_debug" = xyes; then
-    CPPFLAGS="$CPPFLAGS -DDEBUG -DDEBUG_LOCKORDER -DRSM_DEBUG_ASSERTION -DDEBUG_ASSERTION -DDEBUG_PAUSE"
+    CPPFLAGS="$CPPFLAGS -DDEBUG -DDEBUG_LOCKORDER -DRSM_DEBUG_ASSERTION"
 
     # Clear default -g -O2 flags
     if test "x$CXXFLAGS_overridden" = xno; then
@@ -320,7 +314,7 @@ CPPFLAGS="$CPPFLAGS -DHAVE_BUILD_INFO -D__STDC_FORMAT_MACROS"
 
 AC_ARG_WITH([utils],
   [AS_HELP_STRING([--with-utils],
-  [build bitcoin-cli bitcoin-tx (default=yes)])],
+  [build diskcoin-cli diskcoin-tx (default=yes)])],
   [build_bitcoin_utils=$withval],
   [build_bitcoin_utils=yes])
 
@@ -332,7 +326,7 @@ AC_ARG_WITH([libs],
 
 AC_ARG_WITH([daemon],
   [AS_HELP_STRING([--with-daemon],
-  [build bitcoind daemon (default=yes)])],
+  [build diskcoind daemon (default=yes)])],
   [build_bitcoind=$withval],
   [build_bitcoind=yes])
 
@@ -481,10 +475,6 @@ case $host in
      if test "x$use_mutrace" = "xyes"; then
        AC_DEFINE([ENABLE_MUTRACE],[1],[Define to 1 to enable mutex tracing])
      fi
-     if test "x$use_javacashlib" = "xyes"; then
-       AC_DEFINE([ENABLE_JAVACASHLIB],[1],[Define to 1 to enable java binding in cashlib])
-     fi
-
      ;;
    *dragonfly*)
      TARGET_OS=dragonfly
@@ -652,8 +642,6 @@ AC_CHECK_DECLS([bswap_16, bswap_32, bswap_64],,,
 		[#if HAVE_BYTESWAP_H
                  #include <byteswap.h>
                  #endif])
-
-AC_CHECK_DECLS([ __builtin_popcount])
 
 dnl Check for MSG_NOSIGNAL
 AC_MSG_CHECKING(for MSG_NOSIGNAL)
@@ -854,9 +842,9 @@ else
 
   if test x$build_bitcoin_utils$build_bitcoind$bitcoin_enable_qt$use_tests != xnononono; then
     AC_CHECK_HEADER([event2/event.h],, AC_MSG_ERROR(libevent headers missing),)
-    AC_CHECK_LIB([event],[main],EVENT_LIBS=-levent,AC_MSG_ERROR(libevent missing))
+    AC_CHECK_LIB([event],[main],EVENT_LIBS=-l:libevent.a,AC_MSG_ERROR(libevent missing))
     if test x$TARGET_OS != xwindows; then
-      AC_CHECK_LIB([event_pthreads],[main],EVENT_PTHREADS_LIBS=-levent_pthreads,AC_MSG_ERROR(libevent_pthreads missing))
+      AC_CHECK_LIB([event_pthreads],[main],EVENT_PTHREADS_LIBS=-l:libevent_pthreads.a,AC_MSG_ERROR(libevent_pthreads missing))
     fi
   fi
 
@@ -866,7 +854,7 @@ else
        [AC_MSG_WARN([zmq.h not found, disabling zmq support])
         use_zmq=no
         AC_DEFINE([ENABLE_ZMQ],[0],[Define to 1 to enable ZMQ functions])])
-     AC_CHECK_LIB([zmq],[zmq_ctx_shutdown],ZMQ_LIBS=-lzmq,
+     AC_CHECK_LIB([zmq],[zmq_ctx_shutdown],ZMQ_LIBS=-l:libzmq.a,
        [AC_MSG_WARN([libzmq >= 4.0 not found, disabling zmq support])
         use_zmq=no
         AC_DEFINE([ENABLE_ZMQ],[0],[Define to 1 to enable ZMQ functions])])
@@ -890,11 +878,11 @@ CXXFLAGS="${save_CXXFLAGS}"
 
 BITCOIN_QT_PATH_PROGS([PROTOC], [protoc],$protoc_bin_path)
 
-AC_MSG_CHECKING([whether to build bitcoind])
+AC_MSG_CHECKING([whether to build diskcoind])
 AM_CONDITIONAL([BUILD_BITCOIND], [test x$build_bitcoind = xyes])
 AC_MSG_RESULT($build_bitcoind)
 
-AC_MSG_CHECKING([whether to build utils (bitcoin-cli bitcoin-tx)])
+AC_MSG_CHECKING([whether to build utils (diskcoin-cli diskcoin-tx)])
 AM_CONDITIONAL([BUILD_BITCOIN_UTILS], [test x$build_bitcoin_utils = xyes])
 AC_MSG_RESULT($build_bitcoin_utils)
 
@@ -1039,7 +1027,6 @@ AM_CONDITIONAL([USE_LCOV],[test x$use_lcov = xyes])
 AM_CONDITIONAL([ENABLE_GPERF],[test x$use_gperf = xyes])
 AM_CONDITIONAL([ENABLE_GPROF],[test x$use_gprof = xyes])
 AM_CONDITIONAL([ENABLE_MUTRACE],[test x$use_mutrace = xyes])
-AM_CONDITIONAL([ENABLE_JAVACASHLIB],[test x$use_javacashlib = xyes])
 AM_CONDITIONAL([GLIBC_BACK_COMPAT],[test x$use_glibc_compat = xyes])
 AM_CONDITIONAL([HARDEN],[test x$use_hardening = xyes])
 AM_CONDITIONAL([ENABLE_HWCRC32],[test x$enable_hwcrc32 = xyes])
@@ -1093,7 +1080,10 @@ AC_SUBST(EVENT_PTHREADS_LIBS)
 AC_SUBST(ZMQ_LIBS)
 AC_SUBST(PROTOBUF_LIBS)
 AC_SUBST(QR_LIBS)
-AC_CONFIG_FILES([Makefile src/Makefile share/setup.nsi share/qt/Info.plist src/test/buildenv.py doc/Doxyfile])
+#modify for diskcoin -->
+#AC_CONFIG_FILES([Makefile src/Makefile share/setup.nsi share/qt/Info.plist src/test/buildenv.py doc/Doxyfile])
+AC_CONFIG_FILES([Makefile src/Makefile share/setup.nsi share/qt/Info.plist doc/Doxyfile])
+#<--
 AC_CONFIG_FILES([qa/pull-tester/tests_config.py],[chmod +x qa/pull-tester/tests_config.py])
 AC_CONFIG_LINKS([qa/pull-tester/rpc-tests.py:qa/pull-tester/rpc-tests.py])
 
@@ -1124,7 +1114,7 @@ ac_configure_args="${ac_configure_args} --disable-shared --with-pic --with-bignu
 if test "x$enable_debug" = xyes; then
     ac_configure_args="${ac_configure_args} --enable-debug"
 fi
-AC_CONFIG_SUBDIRS([src/rsm src/secp256k1 src/univalue])
+AC_CONFIG_SUBDIRS([src/secp256k1 src/univalue])
 
 AC_OUTPUT
 

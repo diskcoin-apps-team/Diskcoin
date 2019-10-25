@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -69,6 +69,23 @@ std::string GetHex(const unsigned char *data, unsigned int len)
     }
     return ret;
 }
+
+std::string HexEncode(const unsigned char *data, unsigned int len)
+{
+	static const char *hexxlat = "0123456789abcdef";
+	
+    std::string ret;
+    ret.reserve(2 * len);
+    for (unsigned int i = 0; i < len; i++)
+    {
+        unsigned char val = data[i];
+        ret.push_back(hexxlat[val >> 4]);
+        ret.push_back(hexxlat[val & 15]);
+    }
+    return ret;
+
+}
+
 
 vector<unsigned char> ParseHex(const char *psz)
 {
@@ -418,7 +435,7 @@ bool ParseInt32(const std::string &str, int32_t *out)
 {
     if (!ParsePrechecks(str))
         return false;
-    char *endp = nullptr;
+    char *endp = NULL;
     errno = 0; // strtol will not set errno if valid
     long int n = strtol(str.c_str(), &endp, 10);
     if (out)
@@ -434,7 +451,7 @@ bool ParseInt64(const std::string &str, int64_t *out)
 {
     if (!ParsePrechecks(str))
         return false;
-    char *endp = nullptr;
+    char *endp = NULL;
     errno = 0; // strtoll will not set errno if valid
     long long int n = strtoll(str.c_str(), &endp, 10);
     if (out)
@@ -444,6 +461,22 @@ bool ParseInt64(const std::string &str, int64_t *out)
     return endp && *endp == 0 && !errno && n >= std::numeric_limits<int64_t>::min() &&
            n <= std::numeric_limits<int64_t>::max();
 }
+
+bool ParseUint64(const std::string &str, uint64_t *out)
+{
+	if (!ParsePrechecks(str))
+		return false;
+    char *endp = NULL;
+    errno = 0; // strtoll will not set errno if valid
+    unsigned long long int n = strtoull(str.c_str(), &endp, 10);
+    if(out) *out = (uint64_t)n;
+    // Note that strtoll returns a *long long int*, so even if strtol doesn't report a over/underflow
+    // we still have to check that the returned value is within the range of an *int64_t*.
+    return endp && *endp == 0 && !errno &&
+        // n >= std::numeric_limits<uint64_t>::min() &&
+        n <= std::numeric_limits<uint64_t>::max();
+}
+
 
 bool ParseDouble(const std::string &str, double *out)
 {
@@ -517,7 +550,7 @@ int64_t atoi64(const char *psz)
 #ifdef _MSC_VER
     return _atoi64(psz);
 #else
-    return strtoll(psz, nullptr, 10);
+    return strtoll(psz, NULL, 10);
 #endif
 }
 
@@ -526,7 +559,7 @@ int64_t atoi64(const std::string &str)
 #ifdef _MSC_VER
     return _atoi64(str.c_str());
 #else
-    return strtoll(str.c_str(), nullptr, 10);
+    return strtoll(str.c_str(), NULL, 10);
 #endif
 }
 

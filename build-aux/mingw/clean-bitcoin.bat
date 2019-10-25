@@ -65,11 +65,11 @@ set "PATH=%TOOLCHAIN_BIN%;%OLD_PATH%"
 %MSYS_SH% "%INST_DIR%\clean-bitcoin.sh"
 
 REM Remove previously built executable outputs that were copied to non-standard location
-del /F /Q "%BUILD_OUTPUT%\bitcoin-tx.exe"
-del /F /Q "%BUILD_OUTPUT%\bitcoin-cli.exe"
-del /F /Q "%BUILD_OUTPUT%\bitcoind.exe"
-del /F /Q "%BUILD_OUTPUT%\bitcoin-miner.exe"
-del /F /Q "%BUILD_OUTPUT%\bitcoin-qt.exe"
+del /F /Q "%BUILD_OUTPUT%\diskcoin-tx.exe"
+del /F /Q "%BUILD_OUTPUT%\diskcoin-cli.exe"
+del /F /Q "%BUILD_OUTPUT%\diskcoin.exe"
+del /F /Q "%BUILD_OUTPUT%\diskcoin-miner.exe"
+del /F /Q "%BUILD_OUTPUT%\diskcoin-qt.exe"
 
 REM Go to the 64-bit build section (in case we are building both 32 and 64 bit)
 GOTO BUILD_START_64

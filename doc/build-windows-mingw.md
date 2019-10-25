@@ -280,11 +280,11 @@ make -j4
 NOTE: j is followed by the number of cores your machine has, so two core would be -j2 etc..
 
 
-Finally you can strip the executables if you wish.  Stripping will remove debug symbols and greatly reduce the final file size of the executables.  For example, the v12.1 bitcoin-qt.exe will go from ~241MB to ~26MB.
+Finally you can strip the executables if you wish.  Stripping will remove debug symbols and greatly reduce the final file size of the executables.  For example, the v12.1 diskcoin-qt.exe will go from ~241MB to ~26MB.
 
 ```
-strip src/bitcoin-tx.exe
-strip src/bitcoin-cli.exe
-strip src/bitcoind.exe
-strip src/qt/bitcoin-qt.exe
+strip src/diskcoin-tx.exe
+strip src/diskcoin-cli.exe
+strip src/diskcoin.exe
+strip src/qt/diskcoin-qt.exe
 ```

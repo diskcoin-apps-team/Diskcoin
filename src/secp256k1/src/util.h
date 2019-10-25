@@ -85,9 +85,6 @@ static SECP256K1_INLINE void *checked_realloc(const secp256k1_callback* cb, void
 }
 
 /* Macro for restrict, when available and not in a VERIFY build. */
-#ifdef __ANDROID__
-#  define SECP256K1_RESTRICT restrict
-#else
 #if defined(SECP256K1_BUILD) && defined(VERIFY)
 # define SECP256K1_RESTRICT
 #else
@@ -102,7 +99,6 @@ static SECP256K1_INLINE void *checked_realloc(const secp256k1_callback* cb, void
 # else
 #  define SECP256K1_RESTRICT restrict
 # endif
-#endif
 #endif
 
 #if defined(_WIN32)

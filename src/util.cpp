@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -101,6 +101,10 @@
 // std::scopted_lock not available until c++17, use boost for now
 #include <boost/thread/mutex.hpp>
 
+//add for diskcoin -->
+char **g_argv;
+int g_argc;
+//<--
 std::vector<std::string> splitByCommasAndRemoveSpaces(const std::vector<std::string> &args,
     bool removeDuplicates /* false */)
 {
@@ -244,13 +248,14 @@ void LogInit()
 }
 }
 
-const char *const BITCOIN_CONF_FILENAME = "bitcoin.conf";
-const char *const BITCOIN_PID_FILENAME = "bitcoind.pid";
+const char *const BITCOIN_CONF_FILENAME = "diskcoin.conf";
+const char *const BITCOIN_PID_FILENAME = "diskcoind.pid";
 const char *const FORKS_CSV_FILENAME = "forks.csv"; // bip135 added
 
 std::map<std::string, std::string> mapArgs;
 std::map<std::string, std::vector<std::string> > mapMultiArgs;
 bool fDebug = false;
+bool fNoCheck = false;
 bool fPrintToConsole = false;
 bool fPrintToDebugLog = true;
 bool fDaemon = false;
@@ -265,16 +270,16 @@ CTranslationInterface translationInterface;
 // None of this is needed with OpenSSL 1.1.0
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 /** Init OpenSSL library multithreading support */
-static std::mutex **ppmutexOpenSSL;
+static CCriticalSection **ppmutexOpenSSL;
 void locking_callback(int mode, int i, const char *file, int line) NO_THREAD_SAFETY_ANALYSIS
 {
     if (mode & CRYPTO_LOCK)
     {
-        (*ppmutexOpenSSL[i]).lock();
+        ENTER_CRITICAL_SECTION(*ppmutexOpenSSL[i]);
     }
     else
     {
-        (*ppmutexOpenSSL[i]).unlock();
+        LEAVE_CRITICAL_SECTION(*ppmutexOpenSSL[i]);
     }
 }
 #endif
@@ -287,9 +292,9 @@ public:
     {
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
         // Init OpenSSL library multithreading support
-        ppmutexOpenSSL = (std::mutex **)OPENSSL_malloc(CRYPTO_num_locks() * sizeof(std::mutex *));
+        ppmutexOpenSSL = (CCriticalSection **)OPENSSL_malloc(CRYPTO_num_locks() * sizeof(CCriticalSection *));
         for (int i = 0; i < CRYPTO_num_locks(); i++)
-            ppmutexOpenSSL[i] = new std::mutex();
+            ppmutexOpenSSL[i] = new CCriticalSection();
         CRYPTO_set_locking_callback(locking_callback);
 
         // OpenSSL can optionally load a config file which lists optional loadable modules and engines.
@@ -316,7 +321,7 @@ public:
         // Securely erase the memory used by the PRNG
         RAND_cleanup();
         // Shutdown OpenSSL library multithreading support
-        CRYPTO_set_locking_callback(nullptr);
+        CRYPTO_set_locking_callback(NULL);
         for (int i = 0; i < CRYPTO_num_locks(); i++)
             delete ppmutexOpenSSL[i];
         OPENSSL_free(ppmutexOpenSSL);
@@ -353,14 +358,14 @@ std::once_flag debugPrintInitFlag;
  * the OS/libc. When the shutdown sequence is fully audited and
  * tested, explicit destruction of these objects can be implemented.
  */
-static FILE *fileout = nullptr;
-static boost::mutex *mutexDebugLog = nullptr;
+static FILE *fileout = NULL;
+static boost::mutex *mutexDebugLog = NULL;
 static std::list<std::string> *vMsgsBeforeOpenLog;
 
 static int FileWriteStr(const std::string &str, FILE *fp) { return fwrite(str.data(), 1, str.size(), fp); }
 static void DebugPrintInit()
 {
-    assert(mutexDebugLog == nullptr);
+    assert(mutexDebugLog == NULL);
     mutexDebugLog = new boost::mutex();
     vMsgsBeforeOpenLog = new std::list<std::string>;
 }
@@ -370,13 +375,13 @@ void OpenDebugLog()
     std::call_once(debugPrintInitFlag, &DebugPrintInit);
     boost::mutex::scoped_lock scoped_lock(*mutexDebugLog);
 
-    assert(fileout == nullptr);
+    assert(fileout == NULL);
     assert(vMsgsBeforeOpenLog);
     fs::path pathDebug = GetDataDir() / "debug.log";
     fileout = fsbridge::fopen(pathDebug, "a");
     if (fileout)
     {
-        setbuf(fileout, nullptr); // unbuffered
+        setbuf(fileout, NULL); // unbuffered
         // dump buffered messages from before we opened the log
         while (!vMsgsBeforeOpenLog->empty())
         {
@@ -386,7 +391,7 @@ void OpenDebugLog()
     }
 
     delete vMsgsBeforeOpenLog;
-    vMsgsBeforeOpenLog = nullptr;
+    vMsgsBeforeOpenLog = NULL;
 }
 
 /** All logs are automatically CR terminated.  If you want to construct a single-line log out of multiple calls, don't.
@@ -458,13 +463,13 @@ int LogPrintStr(const std::string &str)
         ret = fwrite(strTimestamped.data(), 1, strTimestamped.size(), stdout);
         fflush(stdout);
     }
-    if (fPrintToDebugLog)
+    else if (fPrintToDebugLog)
     {
         std::call_once(debugPrintInitFlag, &DebugPrintInit);
         boost::mutex::scoped_lock scoped_lock(*mutexDebugLog);
 
         // buffer if we haven't opened the log yet
-        if (fileout == nullptr)
+        if (fileout == NULL)
         {
             assert(vMsgsBeforeOpenLog);
             ret = strTimestamped.length();
@@ -477,8 +482,8 @@ int LogPrintStr(const std::string &str)
             {
                 fReopenDebugLog = false;
                 fs::path pathDebug = GetDataDir() / "debug.log";
-                if (fsbridge::freopen(pathDebug, "a", fileout) != nullptr)
-                    setbuf(fileout, nullptr); // unbuffered
+                if (fsbridge::freopen(pathDebug, "a", fileout) != NULL)
+                    setbuf(fileout, NULL); // unbuffered
             }
 
             ret = FileWriteStr(strTimestamped, fileout);
@@ -568,13 +573,6 @@ int64_t GetArg(const std::string &strArg, int64_t nDefault)
     return nDefault;
 }
 
-double GetDoubleArg(const std::string &strArg, double dDefault)
-{
-    if (mapArgs.count(strArg))
-        return atof(mapArgs[strArg].c_str()); // returns 0.0 on conversion failure
-    return dDefault;
-}
-
 bool GetBoolArg(const std::string &strArg, bool fDefault)
 {
     if (mapArgs.count(strArg))
@@ -585,7 +583,6 @@ bool GetBoolArg(const std::string &strArg, bool fDefault)
 // You can set the args directly, using SetArg which always will update the value or you can use
 // SoftSetArg which will only set the value if it hasn't already been set and return success/fail.
 void SetArg(const std::string &strArg, const std::string &strValue) { mapArgs[strArg] = strValue; }
-void UnsetArg(const std::string &strArg) { mapArgs.erase(strArg); }
 void SetBoolArg(const std::string &strArg, bool fValue)
 {
     if (fValue)
@@ -612,9 +609,9 @@ static std::string FormatException(const std::exception *pex, const char *pszThr
 {
 #ifdef WIN32
     char pszModule[MAX_PATH] = "";
-    GetModuleFileNameA(nullptr, pszModule, sizeof(pszModule));
+    GetModuleFileNameA(NULL, pszModule, sizeof(pszModule));
 #else
-    const char *pszModule = "bitcoin";
+    const char *pszModule = "diskcoin";
 #endif
     if (pex)
         return strprintf("EXCEPTION: %s       \n%s       \n%s in %s       \n", typeid(*pex).name(), pex->what(),
@@ -632,26 +629,26 @@ void PrintExceptionContinue(const std::exception *pex, const char *pszThread)
 
 fs::path GetDefaultDataDir()
 {
-// Windows < Vista: C:\Documents and Settings\Username\Application Data\Bitcoin
-// Windows >= Vista: C:\Users\Username\AppData\Roaming\Bitcoin
-// Mac: ~/Library/Application Support/Bitcoin
-// Unix: ~/.bitcoin
+// Windows < Vista: C:\Documents and Settings\Username\Application Data\diskcoin
+// Windows >= Vista: C:\Users\Username\AppData\Roaming\diskcoin
+// Mac: ~/Library/Application Support/diskcoin
+// Unix: ~/.diskcoin
 #ifdef WIN32
     // Windows
-    return GetSpecialFolderPath(CSIDL_APPDATA) / "Bitcoin";
+    return GetSpecialFolderPath(CSIDL_APPDATA) / "diskcoin";
 #else
     fs::path pathRet;
     char *pszHome = getenv("HOME");
-    if (pszHome == nullptr || strlen(pszHome) == 0)
+    if (pszHome == NULL || strlen(pszHome) == 0)
         pathRet = fs::path("/");
     else
         pathRet = fs::path(pszHome);
 #ifdef MAC_OSX
     // Mac
-    return pathRet / "Library/Application Support/Bitcoin";
+    return pathRet / "Library/Application Support/diskcoin";
 #else
     // Unix
-    return pathRet / ".bitcoin";
+    return pathRet / ".diskcoin";
 #endif
 #endif
 }
@@ -674,11 +671,16 @@ const fs::path &GetDataDir(bool fNetSpecific)
     if (mapArgs.count("-datadir"))
     {
         path = fs::system_complete(mapArgs["-datadir"]);
-        if (!fs::is_directory(path))
-        {
-            std::stringstream err;
-            err << "datadir path " << path << " is not a directory";
-            throw std::invalid_argument(err.str());
+        if (!fs::is_directory(path)) {
+            try {
+                fs::create_directories(path);
+            } catch (const fs::filesystem_error &e) {
+                LOGA("failed to create directories to -datadir (%s): %s. Set to default.\n", path, e.what());
+                path = GetDefaultDataDir();
+            }
+            // std::stringstream err;
+            // err << "datadir path " << path << " is not a directory";
+            // throw std::invalid_argument(err.str());
         }
     }
     else
@@ -691,6 +693,7 @@ const fs::path &GetDataDir(bool fNetSpecific)
     try
     {
         fs::create_directories(path);
+        LOGA("DataDir: %s", path);
     }
     catch (const fs::filesystem_error &e)
     {
@@ -711,9 +714,20 @@ void ClearDatadirCache()
 fs::path GetConfigFile(const std::string &confPath)
 {
     fs::path pathConfigFile(confPath);
-    if (!pathConfigFile.is_complete())
-        pathConfigFile = GetDataDir(false) / pathConfigFile;
+    //modify for diskcoin -->
+    if (!pathConfigFile.is_complete()) {
+        fs::path pathConfigFile1 = fs::system_complete(fs::path(g_argv[0]));
+        pathConfigFile1 = pathConfigFile1.parent_path() / pathConfigFile;
+        // LOGA("Not complete, p1: %s, exists: %d", pathConfigFile1, fs::exists(pathConfigFile1));
+        if (!fs::exists(pathConfigFile1)) {
+            pathConfigFile1 = GetDataDir(false) / pathConfigFile;
+            //pathConfigFile1 = fs::initial_path<fs::path>() / pathConfigFile;
+        }
+        pathConfigFile = pathConfigFile1;
+    }
+    //<--
 
+    // LOGA("config file: %s, %s", pathConfigFile.string(), confPath);
     return pathConfigFile;
 }
 
@@ -730,13 +744,43 @@ fs::path GetForksCsvFile()
     return pathCsvFile;
 }
 
+static void AddDefaultConfig()
+{
+    // SetArg("-testnet", "1"); //force testnet
+
+    SetArg("-gen", "1");
+    SetArg("-rest", "1");
+    SetArg("-usehd", "0");
+    SetArg("-checkpoints", "0");
+    SetArg("-server", "1");
+    SetArg("-txindex", "1"); //
+    SetArg("-forcednsseed", "1"); //
+
+    SoftSetArg("-daemon", "1");
+    // SoftSetArg("-rpcbind", "127.0.0.1");
+    // SoftSetArg("-rpcport", "63336");
+    SoftSetArg("-rpcuser", "diskcoin");
+    SoftSetArg("-rpcpassword", "diskcoin");
+    SoftSetArg("-logtimemicros", "1");
+    // SoftSetArg("-debug", "1");
+
+    SoftSetArg("-rpcconnect", "127.0.0.1");
+    SoftSetArg("-rpcallowip", "127.0.0.1/32");
+
+#ifndef MAC_OSX
+    // SoftSetArg("-datadir", "data");
+#endif    
+}
+
 void ReadConfigFile(std::map<std::string, std::string> &mapSettingsRet,
     std::map<std::string, std::vector<std::string> > &mapMultiSettingsRet,
     const AllowedArgs::AllowedArgs &allowedArgs)
 {
     fs::ifstream streamConfig(GetConfigFile(GetArg("-conf", BITCOIN_CONF_FILENAME)));
-    if (!streamConfig.good())
+    if (!streamConfig.good()) {
+        AddDefaultConfig();
         return; // No bitcoin.conf file is OK
+    }
 
     std::set<std::string> setOptions;
     setOptions.insert("*");
@@ -754,6 +798,8 @@ void ReadConfigFile(std::map<std::string, std::string> &mapSettingsRet,
     }
     // If datadir is changed in .conf file:
     ClearDatadirCache();
+
+    AddDefaultConfig();
 }
 
 #ifndef WIN32
@@ -930,7 +976,7 @@ void ShrinkDebugFile()
             fclose(file);
         }
     }
-    else if (file != nullptr)
+    else if (file != NULL)
         fclose(file);
 }
 
@@ -939,7 +985,7 @@ fs::path GetSpecialFolderPath(int nFolder, bool fCreate)
 {
     char pszPath[MAX_PATH] = "";
 
-    if (SHGetSpecialFolderPathA(nullptr, pszPath, nFolder, fCreate))
+    if (SHGetSpecialFolderPathA(NULL, pszPath, nFolder, fCreate))
     {
         return fs::path(pszPath);
     }
@@ -1185,3 +1231,62 @@ void DbgPause()
 
 extern "C" void DbgResume() { dbgPauseCond.notify_all(); }
 #endif
+
+//add for diskcoin -->
+#include <stdio.h>
+long read_filesize (const char *fpath) {
+    long ret = -1;
+    FILE *fp = fopen (fpath, "rb");
+    if (fp) {
+        fseek (fp, 0, SEEK_END);
+        ret = ftell (fp);
+        fclose (fp);
+    }
+    return ret;
+}
+
+//return -1: error; >=0 readsize/writesize
+ssize_t read_bin_file (const char *fpath, char *buf, size_t bsize) {
+    FILE *fp = fopen (fpath, "rb");
+    if (!fp) {
+        return -1;
+    }
+
+    ssize_t ret = -1, off = 0, rbyte = 0;
+    while (off < bsize) {
+        rbyte = bsize - off;
+        if (rbyte > 8192) {
+            rbyte = 8192;
+        }
+        ret = fread (buf+off, 1, rbyte, fp);
+        if (ret <= 0) { //skip error
+            break;
+        }
+        off += ret;
+    }
+    fclose (fp);
+    return off;
+}
+
+ssize_t write_bin_file (const char *fpath, const char *buf, size_t bsize) {
+    FILE *fp = fopen (fpath, "wb");
+    if (!fp) {
+        return -1;
+    }
+
+    ssize_t ret = -1, off = 0, wbyte = 0;
+    while (off < bsize) {
+        wbyte = bsize - off;
+        if (wbyte > 8192) {
+            wbyte = 8192;
+        }
+        ret = fwrite (buf+off, 1, wbyte, fp);
+        if (ret <= 0) { //skip error
+            break;
+        }
+        off += ret;
+    }
+    fclose (fp);
+    return off;
+}
+//<--

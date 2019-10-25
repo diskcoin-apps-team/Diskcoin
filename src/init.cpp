@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -28,14 +28,12 @@
 #include "httprpc.h"
 #include "httpserver.h"
 #include "httpserver.h"
-#include "index/txindex.h"
 #include "key.h"
 #include "main.h"
 #include "miner.h"
 #include "net.h"
 #include "parallel.h"
 #include "policy/policy.h"
-#include "requestManager.h"
 #include "rpc/register.h"
 #include "rpc/server.h"
 #include "script/sigcache.h"
@@ -53,6 +51,7 @@
 #include "validation/validation.h"
 #include "validation/verifydb.h"
 #include "validationinterface.h"
+#include "shabal/stakedb.h"
 
 #ifdef ENABLE_WALLET
 #include "wallet/db.h"
@@ -85,7 +84,7 @@ using namespace std;
 bool fFeeEstimatesInitialized = false;
 
 #if ENABLE_ZMQ
-static CZMQNotificationInterface *pzmqNotificationInterface = nullptr;
+static CZMQNotificationInterface *pzmqNotificationInterface = NULL;
 #endif
 
 #ifdef WIN32
@@ -168,7 +167,7 @@ public:
     // Writes do not need similar protection, as failure to write is handled by the caller.
 };
 
-static CCoinsViewErrorCatcher *pcoinscatcher = nullptr;
+static CCoinsViewErrorCatcher *pcoinscatcher = NULL;
 static std::unique_ptr<ECCVerifyHandle> globalVerifyHandle;
 
 void Interrupt(thread_group &threadGroup)
@@ -189,10 +188,6 @@ void Interrupt(thread_group &threadGroup)
     // stop TxAdmission needs to be done before threadGroup tries to join_all
     // we only join_all after Interrupt so call StopTxAdmission here
     StopTxAdmission();
-    if (g_txindex)
-    {
-        g_txindex->Stop();
-    }
 }
 
 void Shutdown()
@@ -210,16 +205,6 @@ void Shutdown()
     RenameThread("shutoff");
     mempool.AddTransactionsUpdated(1);
 
-    // Call every async stop function before flushing to disk
-    StopHTTPRPC();
-    StopREST();
-    StopRPC();
-    StopHTTPServer();
-    StopTxAdmission();
-    StopNode();
-    PV.reset(nullptr); // clean up scriptcheck threads
-
-    // This is the longest running shutdown procedure
     {
         LOCK(cs_main);
         if (pcoinsTip != nullptr)
@@ -230,18 +215,18 @@ void Shutdown()
         }
     }
 
+    StopHTTPRPC();
+    StopREST();
+    StopRPC();
+    StopHTTPServer();
     electrum::ElectrumServer::Instance().Stop();
 #ifdef ENABLE_WALLET
     if (pwalletMain)
         pwalletMain->Flush(false);
 #endif
     GenerateBitcoins(false, 0, Params());
-
-    if (g_txindex)
-    {
-        g_txindex.reset();
-    }
-
+    StopTxAdmission();
+    StopNode();
     StopTorControl();
     UnregisterNodeSignals(GetNodeSignals());
     if (fDumpMempoolLater && GetArg("-persistmempool", DEFAULT_PERSIST_MEMPOOL))
@@ -262,16 +247,16 @@ void Shutdown()
 
     {
         LOCK(cs_main);
-        if (pcoinsTip != nullptr)
+        if (pcoinsTip != NULL)
         {
             FlushStateToDisk();
         }
         delete pcoinsTip;
-        pcoinsTip = nullptr;
+        pcoinsTip = NULL;
         delete pcoinscatcher;
-        pcoinscatcher = nullptr;
+        pcoinscatcher = NULL;
         delete pcoinsdbview;
-        pcoinsdbview = nullptr;
+        pcoinsdbview = NULL;
         delete pblocktree;
         pblocktree = nullptr;
         delete pblockdb;
@@ -287,7 +272,7 @@ void Shutdown()
     {
         UnregisterValidationInterface(pzmqNotificationInterface);
         delete pzmqNotificationInterface;
-        pzmqNotificationInterface = nullptr;
+        pzmqNotificationInterface = NULL;
     }
 #endif
 
@@ -304,13 +289,12 @@ void Shutdown()
     UnregisterAllValidationInterfaces();
 #ifdef ENABLE_WALLET
     delete pwalletMain;
-    pwalletMain = nullptr;
+    pwalletMain = NULL;
 #endif
     globalVerifyHandle.reset();
     ECC_Stop();
-    requester.Cleanup();
+
     NetCleanup();
-    connmgr.reset(nullptr); // clean up connection manager
     MainCleanup();
     UnlimitedCleanup();
     LOGA("%s: done\n", __func__);
@@ -608,8 +592,7 @@ void InitParameterInteraction()
     }
 
     // disable walletbroadcast and whitelistrelay in blocksonly mode
-    fBlocksOnly = GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY);
-    if (fBlocksOnly)
+    if (GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY))
     {
         if (SoftSetBoolArg("-whitelistrelay", false))
             LOGA("%s: parameter interaction: -blocksonly=1 -> setting -whitelistrelay=0\n", __func__);
@@ -630,12 +613,6 @@ void InitParameterInteraction()
 void InitLogging()
 {
     fPrintToConsole = GetBoolArg("-printtoconsole", DEFAULT_PRINTTOCONSOLE);
-
-    // Some QA tests depend on debug.log being written to, so default
-    // to always print to log file on regtest.
-    const bool regtest = Params().NetworkIDString() == CBaseChainParams::REGTEST;
-    fPrintToDebugLog = GetBoolArg("-printtologfile", !fPrintToConsole || regtest);
-
     fLogTimestamps = GetBoolArg("-logtimestamps", DEFAULT_LOGTIMESTAMPS);
     fLogTimeMicros = GetBoolArg("-logtimemicros", DEFAULT_LOGTIMEMICROS);
     fLogIPs = GetBoolArg("-logips", DEFAULT_LOGIPS);
@@ -644,6 +621,10 @@ void InitLogging()
     LOGA("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     LOGA("Bitcoin version %s (%s)\n", FormatFullVersion(), CLIENT_DATE);
 }
+
+// diskcoin
+UniValue addblackplotterid(const UniValue &params, bool fHelp);
+
 
 /** Initialize bitcoin.
  *  @pre Parameters should be parsed and config file should be read.
@@ -657,7 +638,7 @@ bool AppInit2(Config &config, thread_group &threadGroup)
 #ifdef _MSC_VER
     // Turn off Microsoft heap dump noise
     _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
-    _CrtSetReportFile(_CRT_WARN, CreateFileA("NUL", GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, 0));
+    _CrtSetReportFile(_CRT_WARN, CreateFileA("NUL", GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, 0));
 #endif
 #if _MSC_VER >= 1400
     // Disable confusing "helpful" text message on abort, Ctrl-C
@@ -675,7 +656,7 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     typedef BOOL(WINAPI * PSETPROCDEPPOL)(DWORD);
     PSETPROCDEPPOL setProcDEPPol =
         (PSETPROCDEPPOL)GetProcAddress(GetModuleHandleA("Kernel32.dll"), "SetProcessDEPPolicy");
-    if (setProcDEPPol != nullptr)
+    if (setProcDEPPol != NULL)
         setProcDEPPol(PROCESS_DEP_ENABLE);
 #endif
 
@@ -700,15 +681,15 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     sa.sa_handler = HandleSIGTERM;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
-    sigaction(SIGTERM, &sa, nullptr);
-    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
 
     // Reopen debug.log on SIGHUP
     struct sigaction sa_hup;
     sa_hup.sa_handler = HandleSIGHUP;
     sigemptyset(&sa_hup.sa_mask);
     sa_hup.sa_flags = 0;
-    sigaction(SIGHUP, &sa_hup, nullptr);
+    sigaction(SIGHUP, &sa_hup, NULL);
 
     // Ignore SIGPIPE, otherwise it will bring the daemon down if the client closes unexpectedly
     signal(SIGPIPE, SIG_IGN);
@@ -735,14 +716,6 @@ bool AppInit2(Config &config, thread_group &threadGroup)
         }
 #endif
     }
-    else
-    {
-        // raise preallocation size of block and undo files
-        blockfile_chunk_size = MAX_BLOCKFILE_SIZE;
-        // multiply by 8 as this is the same difference between default and max blockfile size
-        // we do not have a define max undofile size
-        undofile_chunk_size = undofile_chunk_size * 8;
-    }
 
     // Make sure enough file descriptors are available
     int nBind = std::max((int)mapArgs.count("-bind") + (int)mapArgs.count("-whitebind"), 1);
@@ -763,6 +736,7 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     // ********************************************************* Step 3: parameter-to-internal-flags
 
     fDebug = !mapMultiArgs["-debug"].empty();
+    fNoCheck = !mapMultiArgs["-fastchk"].empty();
     // Special-case: if -debug=0/-nodebug is set, turn off debugging messages
     const vector<string> &categories = mapMultiArgs["-debug"];
     if (find(categories.begin(), categories.end(), string("0")) != categories.end())
@@ -783,7 +757,7 @@ bool AppInit2(Config &config, thread_group &threadGroup)
 
     // mempool limits
     int64_t nMempoolSizeMax = GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000;
-    int64_t nMempoolSizeMin = GetArg("-limitdescendantsize", BU_DEFAULT_DESCENDANT_SIZE_LIMIT) * 1000 * 40;
+    int64_t nMempoolSizeMin = GetArg("-limitdescendantsize", DEFAULT_DESCENDANT_SIZE_LIMIT) * 1000 * 40;
     if (nMempoolSizeMax < 0 || nMempoolSizeMax < nMempoolSizeMin)
         return InitError(strprintf(_("-maxmempool must be at least %d MB"), std::ceil(nMempoolSizeMin / 1000000.0)));
 
@@ -935,6 +909,26 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     if (fPrintToDebugLog)
         OpenDebugLog();
 
+    //add for diskcoin-->
+    fs::path pocFilterFile = GetDataDir() / "pocfilter.dat";
+    LOGA("pocfilter path: %s", pocFilterFile.string());
+    pPocFilter = new CPocBloomFilter();
+    if (!pPocFilter) {
+        return InitError(_("Failed to alloc pocfilter memory."));
+    }
+    if (!pPocFilter->load(pocFilterFile.string().c_str())) {
+        LOGA(_("Using zero pocfilter."));
+        pPocFilter->clear();
+    }
+
+    fs::path stakeFile = GetDataDir() / "stakedb.dat";
+    LOGA("stakedb path: %s", stakeFile.string());
+    if (stakedb_load (stakeFile.string().c_str()) < 0) {
+        LOGA("Failed to load stakedb.");
+        return InitError("Failed to load stakedb");
+    }
+    //<--
+
 #ifdef ENABLE_WALLET
     LOGA("Using BerkeleyDB version %s\n", DbEnv::version(0, 0, 0));
 #endif
@@ -1052,7 +1046,6 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     // ********************************************************* Step 6: load block chain
 
     fReindex = GetBoolArg("-reindex", DEFAULT_REINDEX);
-    fTxIndex = GetBoolArg("-txindex", DEFAULT_TXINDEX);
     int64_t requested_block_mode = GetArg("-useblockdb", DEFAULT_BLOCK_DB_MODE);
     if (requested_block_mode >= 0 && requested_block_mode < END_STORAGE_OPTIONS)
     {
@@ -1099,24 +1092,20 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     }
 
     // Return the initial values for the various in memory caches.
-    CacheConfig cacheConfig = DiscoverCacheConfiguration();
+    int64_t nBlockDBCache = 0;
+    int64_t nBlockUndoDBCache = 0;
+    int64_t nBlockTreeDBCache = 0;
+    int64_t nCoinDBCache = 0;
+    GetCacheConfiguration(nBlockDBCache, nBlockUndoDBCache, nBlockTreeDBCache, nCoinDBCache, nCoinCacheMaxSize);
     LOGA("Cache configuration:\n");
-    LOGA("* Using %.1fMiB for block database\n", cacheConfig.nBlockDBCache * (1.0 / 1024 / 1024));
-    LOGA("* Using %.1fMiB for block undo database\n", cacheConfig.nBlockUndoDBCache * (1.0 / 1024 / 1024));
-    LOGA("* Using %.1fMiB for block index database\n", cacheConfig.nBlockTreeDBCache * (1.0 / 1024 / 1024));
-    LOGA("* Using %.1fMiB for txindex database\n", cacheConfig.nTxIndexCache * (1.0 / 1024 / 1024));
-    LOGA("* Using %.1fMiB for chain state database\n", cacheConfig.nCoinDBCache * (1.0 / 1024 / 1024));
+    LOGA("* Using %.1fMiB for block database\n", nBlockDBCache * (1.0 / 1024 / 1024));
+    LOGA("* Using %.1fMiB for block undo database\n", nBlockUndoDBCache * (1.0 / 1024 / 1024));
+    LOGA("* Using %.1fMiB for block index database\n", nBlockTreeDBCache * (1.0 / 1024 / 1024));
+    LOGA("* Using %.1fMiB for chain state database\n", nCoinDBCache * (1.0 / 1024 / 1024));
     LOGA("* Using %.1fMiB for in-memory UTXO set\n", nCoinCacheMaxSize * (1.0 / 1024 / 1024));
 
     bool fLoaded = false;
     StartTxAdmission(threadGroup);
-
-    if (fTxIndex)
-    {
-        auto txindex_db = new TxIndexDB(cacheConfig.nTxIndexCache, false, fReindex);
-        g_txindex = std::make_unique<TxIndex>(txindex_db);
-    }
-
     while (!fLoaded)
     {
         bool fReset = fReindex;
@@ -1136,11 +1125,10 @@ bool AppInit2(Config &config, thread_group &threadGroup)
                 delete pblockdb;
 
                 uiInterface.InitMessage(_("Opening Block database..."));
-                InitializeBlockStorage(
-                    cacheConfig.nBlockTreeDBCache, cacheConfig.nBlockDBCache, cacheConfig.nBlockUndoDBCache);
+                InitializeBlockStorage(nBlockTreeDBCache, nBlockDBCache, nBlockUndoDBCache);
 
                 uiInterface.InitMessage(_("Opening UTXO database..."));
-                pcoinsdbview = new CCoinsViewDB(cacheConfig.nCoinDBCache, false, fReindex);
+                pcoinsdbview = new CCoinsViewDB(nCoinDBCache, false, fReindex);
                 pcoinscatcher = new CCoinsViewErrorCatcher(pcoinsdbview);
                 uiInterface.InitMessage(_("Opening Coins Cache database..."));
                 pcoinsTip = new CCoinsViewCache(pcoinscatcher);
@@ -1168,6 +1156,9 @@ bool AppInit2(Config &config, thread_group &threadGroup)
                     strLoadError = _("Error loading block database");
                     break;
                 }
+                if (fDebug) {
+                    uiInterface.InitMessage(_("End load block index."));
+                }
 
                 {
                     READLOCK(cs_mapBlockIndex);
@@ -1181,6 +1172,13 @@ bool AppInit2(Config &config, thread_group &threadGroup)
                 if (!InitBlockIndex(chainparams))
                 {
                     strLoadError = _("Error initializing block database");
+                    break;
+                }
+
+                // Check for changed -txindex state
+                if (fTxIndex != GetBoolArg("-txindex", DEFAULT_TXINDEX))
+                {
+                    strLoadError = _("You need to rebuild the database using -reindex to change -txindex");
                     break;
                 }
 
@@ -1273,20 +1271,20 @@ bool AppInit2(Config &config, thread_group &threadGroup)
         mempool.ReadFeeEstimates(est_filein);
     fFeeEstimatesInitialized = true;
 
-    // Set fCanonicalTxsOrder for the BCH early in the bootstrap phase
-    if (IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()))
+    // Set EB and MAX_OPS_PER_SCRIPT for the SV chain
+    if (AreWeOnSVChain() && IsSv2018Activated(Params().GetConsensus(), chainActive.Tip()))
     {
-        if (chainparams.NetworkIDString() != "regtest")
-        {
-            fCanonicalTxsOrder = true;
-        }
+        maxScriptOps = SV_MAX_OPS_PER_SCRIPT;
+        excessiveBlockSize = SV_EXCESSIVE_BLOCK_SIZE;
+        settingsToUserAgentString();
+        enableCanonicalTxOrder = false;
     }
-    else
+
+    // Set enableCanonicalTxOrder for the BCH early in the bootstrap phase
+    if (AreWeOnBCHChain() && IsNov2018Activated(Params().GetConsensus(), chainActive.Tip()) &&
+        chainparams.NetworkIDString() != "regtest")
     {
-        if (chainparams.NetworkIDString() != "regtest")
-        {
-            fCanonicalTxsOrder = false;
-        }
+        enableCanonicalTxOrder = true;
     }
 
 
@@ -1295,13 +1293,15 @@ bool AppInit2(Config &config, thread_group &threadGroup)
 #ifdef ENABLE_WALLET
 
     // Encoded addresses using cashaddr instead of base58
-    // The default behaviour is to use this encoding. This will help
-    // to avoid confusion with other currencies the base58 encoding
-    config.SetCashAddrEncoding(GetBoolArg("-usecashaddr", true));
-
+    // Activates by default on Jan, 14
+    //modify for diskcoin -->
+    //config.SetCashAddrEncoding(GetBoolArg("-usecashaddr", GetAdjustedTime() > 1515900000));
+    config.SetCashAddrEncoding(false);
+    //<--
+    
     if (fDisableWallet)
     {
-        pwalletMain = nullptr;
+        pwalletMain = NULL;
         LOGA("Wallet disabled!\n");
     }
     else
@@ -1315,10 +1315,6 @@ bool AppInit2(Config &config, thread_group &threadGroup)
 #endif // !ENABLE_WALLET
 
     // ********************************************************* Step 8: data directory maintenance
-    if (g_txindex)
-    {
-        g_txindex->Start();
-    }
 
     // if pruning, unset the service bit and perform the initial blockstore prune
     // after any wallet rescanning has taken place.
@@ -1379,22 +1375,19 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     RegisterNodeSignals(GetNodeSignals());
 
     // sanitize comments per BIP-0014, format user agent and check total size
-    std::vector<string> uacomments = {};
+    std::vector<string> uacomments;
     for (string &cmt : mapMultiArgs["-uacomment"])
     {
         if (cmt != SanitizeString(cmt, SAFE_CHARS_UA_COMMENT))
             return InitError(strprintf(_("User Agent comment (%s) contains unsafe characters."), cmt));
         uacomments.push_back(SanitizeString(cmt, SAFE_CHARS_UA_COMMENT));
     }
-
-    std::string strSubVersion = FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, BUComments);
-    if (strSubVersion.size() == MAX_SUBVERSION_LENGTH)
+    strSubVersion = FormatSubVersion(CLIENT_NAME, CLIENT_VERSION, uacomments);
+    if (strSubVersion.size() > MAX_SUBVERSION_LENGTH)
     {
-        InitWarning(
-            strprintf(_("Total length of network version string with uacomments added exceeded "
-                        "the maximum length (%i) and have been truncated.  Reduce the number or size of uacomments "
-                        "to avoid truncation."),
-                MAX_SUBVERSION_LENGTH));
+        return InitError(strprintf(_("Total length of network version string (%i) exceeds maximum length (%i). Reduce "
+                                     "the number or size of uacomments."),
+            strSubVersion.size(), MAX_SUBVERSION_LENGTH));
     }
 
     if (mapArgs.count("-onlynet"))
@@ -1548,6 +1541,19 @@ bool AppInit2(Config &config, thread_group &threadGroup)
 
     // ********************************************************* Step 11: start node
 
+	// diskcoin
+	{
+		auto pids = mapMultiArgs["-addblackplotterid"];
+		for (auto it = pids.begin(); it != pids.end(); it++)
+		{
+			UniValue req(UniValue::VARR);
+			req.push_back(*it);
+			auto res = addblackplotterid(req, false);
+			std::string str = res.write() + "\n";
+			LOGA("addblackplotterid %d %s", *it, str.data());
+		}
+	}
+
     if (!CheckDiskSpace())
         return false;
 
@@ -1593,11 +1599,8 @@ bool AppInit2(Config &config, thread_group &threadGroup)
     uiInterface.InitMessage(_("Reaccepting Wallet Transactions"));
     if (pwalletMain)
     {
-        {
-            TxAdmissionPause pause; // Get an initial state to use during wallet tx acceptance
-            // Add wallet transactions that aren't already in a block to mapTransactions
-            pwalletMain->ReacceptWalletTransactions();
-        }
+        // Add wallet transactions that aren't already in a block to mapTransactions
+        pwalletMain->ReacceptWalletTransactions();
 
         // Run a thread to flush wallet periodically
         threadGroup.create_thread(&ThreadFlushWalletDB, boost::ref(pwalletMain->strWalletFile));

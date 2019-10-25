@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -27,8 +27,12 @@
 #include "utilstrencodings.h"
 #include "validation/validation.h"
 #include "validationinterface.h"
+#include "shabal/stakedb.h"
 
-#include <cstdlib>
+//add for diskcoin -->
+#include "crypto/aes.h"
+//<--
+
 #include <stdint.h>
 
 #include <boost/assign/list_of.hpp>
@@ -50,7 +54,7 @@ UniValue GetNetworkHashPS(int lookup, int height)
     if (height >= 0 && height < chainActive.Height())
         pb = chainActive[height];
 
-    if (pb == nullptr || !pb->nHeight)
+    if (pb == NULL || !pb->nHeight)
         return 0;
 
     // If lookup is -1, then use blocks since last difficulty change.
@@ -104,7 +108,7 @@ UniValue getnetworkhashps(const UniValue &params, bool fHelp)
         params.size() > 0 ? params[0].get_int() : 120, params.size() > 1 ? params[1].get_int() : -1);
 }
 
-UniValue generateBlocks(boost::shared_ptr<CReserveScript> coinbaseScript,
+UniValue generateBlocks(const CScript &scriptFundPubKeyIn, boost::shared_ptr<CReserveScript> coinbaseScript,
     int nGenerate,
     uint64_t nMaxTries,
     bool keepScript)
@@ -127,7 +131,7 @@ UniValue generateBlocks(boost::shared_ptr<CReserveScript> coinbaseScript,
         std::unique_ptr<CBlockTemplate> pblocktemplate;
         {
             TxAdmissionPause lock; // flush any tx waiting to enter the mempool
-            pblocktemplate = BlockAssembler(Params()).CreateNewBlock(coinbaseScript->reserveScript);
+            pblocktemplate = BlockAssembler(Params()).CreateNewBlock(scriptFundPubKeyIn, coinbaseScript->reserveScript);
         }
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
@@ -158,7 +162,7 @@ UniValue generateBlocks(boost::shared_ptr<CReserveScript> coinbaseScript,
         PV->StopAllValidationThreads(pblock->GetBlockHeader().nBits);
 
         CValidationState state;
-        if (!ProcessNewBlock(state, Params(), nullptr, pblock, true, nullptr, false))
+        if (!ProcessNewBlock(state, Params(), NULL, pblock, true, NULL, false))
             throw JSONRPCError(RPC_INTERNAL_ERROR, "ProcessNewBlock, block not accepted");
         ++nHeight;
         blockHashes.push_back(pblock->GetHash().GetHex());
@@ -200,6 +204,14 @@ UniValue generate(const UniValue &params, bool fHelp)
         nMaxTries = params[1].get_int();
     }
 
+    // add for diskcoin
+    CTxDestination funddestination = DecodeDestination(FUND_PUB_ADDRESS);
+    if (!IsValidDestination(funddestination))
+    {
+        throw std::runtime_error("invalid fund address");
+    }
+    CScript scriptFundPubKey = GetScriptForDestination(funddestination);
+
     boost::shared_ptr<CReserveScript> coinbaseScript;
     GetMainSignals().ScriptForMining(coinbaseScript);
 
@@ -211,7 +223,7 @@ UniValue generate(const UniValue &params, bool fHelp)
     if (coinbaseScript->reserveScript.empty())
         throw JSONRPCError(RPC_INTERNAL_ERROR, "No coinbase script available (mining requires a wallet)");
 
-    return generateBlocks(coinbaseScript, nGenerate, nMaxTries, true);
+    return generateBlocks(scriptFundPubKey, coinbaseScript, nGenerate, nMaxTries, true);
 }
 
 UniValue generatetoaddress(const UniValue &params, bool fHelp)
@@ -236,6 +248,14 @@ UniValue generatetoaddress(const UniValue &params, bool fHelp)
         nMaxTries = params[2].get_int();
     }
 
+    // add for diskcoin
+    CTxDestination funddestination = DecodeDestination(FUND_PUB_ADDRESS);
+    if (!IsValidDestination(funddestination))
+    {
+        throw std::runtime_error("invalid fund address");
+    }
+    CScript scriptFundPubKey = GetScriptForDestination(funddestination);
+
     CTxDestination destination = DecodeDestination(params[1].get_str());
     if (!IsValidDestination(destination))
     {
@@ -245,7 +265,7 @@ UniValue generatetoaddress(const UniValue &params, bool fHelp)
     boost::shared_ptr<CReserveScript> coinbaseScript(new CReserveScript());
     coinbaseScript->reserveScript = GetScriptForDestination(destination);
 
-    return generateBlocks(coinbaseScript, nGenerate, nMaxTries, false);
+    return generateBlocks(scriptFundPubKey, coinbaseScript, nGenerate, nMaxTries, false);
 }
 
 UniValue getmininginfo(const UniValue &params, bool fHelp)
@@ -531,8 +551,8 @@ params
 coinbaseSize -Set the size of coinbase if >=0
 
 Outputs:
-returns JSON if pblockOut is nullptr
-pblockOut -A copy of the block if not nullptr
+returns JSON if pblockOut is NULL
+pblockOut -A copy of the block if not NULL
 */
 
 bool forceTemplateRecalc GUARDED_BY(cs_main) = false;
@@ -543,10 +563,7 @@ void SignalBlockTemplateChange()
 
     forceTemplateRecalc = true;
 }
-UniValue mkblocktemplate(const UniValue &params,
-    int64_t coinbaseSize,
-    CBlock *pblockOut,
-    const CScript &coinbaseScriptIn)
+UniValue mkblocktemplate(const UniValue &params, int64_t coinbaseSize, CBlock *pblockOut)
 {
     LOCK(cs_main);
 
@@ -554,8 +571,6 @@ UniValue mkblocktemplate(const UniValue &params,
     UniValue lpval = NullUniValue;
     std::set<std::string> setClientRules;
     int64_t nMaxVersionPreVB = -1;
-    CScript coinbaseScript(coinbaseScriptIn); // non-const copy (we may modify this below)
-
     if (params.size() > 0)
     {
         const UniValue &oparam = params[0].get_obj();
@@ -583,7 +598,6 @@ UniValue mkblocktemplate(const UniValue &params,
             {
                 uint256 hash = block.GetHash();
                 CBlockIndex *pindex = LookupBlockIndex(hash);
-                READLOCK(cs_mapBlockIndex);
                 if (pindex)
                 {
                     if (pindex->IsValid(BLOCK_VALID_SCRIPTS))
@@ -684,70 +698,44 @@ UniValue mkblocktemplate(const UniValue &params,
         // miners?
     }
 
-    const Consensus::Params &consensusParams = Params().GetConsensus();
-
     // Update block
-    static CBlockIndex *pindexPrev = nullptr;
+    static CBlockIndex *pindexPrev = NULL;
     static int64_t nStart = 0;
     static std::unique_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate());
-    static CScript prevCoinbaseScript;
-    static int64_t prevCoinbaseSize = -1;
-    // We cache the previous block templates returned, but we invalidate the
-    // cache below (generate a new block) if any of:
-    // 1. Global forceTemplateRecalc is true.
-    // 2. Cached block points to a different chaintip.
-    // 3. Is testnet and 30 seconds have elapsed (so we pick up the testnet
-    //    minimum difficulty -> 1.0 after 20 mins).
-    // 4. Mempool has changed and 5 seconds has elapsed.
-    // 5. Passed-in coinbaseSize differs from cached.
-    // 6. Passed-in coinbaseScript differs from cached.
-    if (pindexPrev != chainActive.Tip() || forceTemplateRecalc || // 1 & 2 above
-        (consensusParams.fPowAllowMinDifficultyBlocks && std::abs(GetTime() - nStart) > 30) || // 3 above
-        // 4 above
-        (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && std::abs(GetTime() - nStart) > 5) ||
-        prevCoinbaseSize != coinbaseSize || prevCoinbaseScript != coinbaseScript) // 5 & 6 above
+    if (pindexPrev != chainActive.Tip() || forceTemplateRecalc ||
+        (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 5))
     {
         forceTemplateRecalc = false;
         // Clear pindexPrev so future calls make a new block, despite any failures from here on
-        pindexPrev = nullptr;
-
-        // Saved passed-in values for coinbase (also used to determine if we need to create new block)
-        prevCoinbaseScript = coinbaseScript;
-        prevCoinbaseSize = coinbaseSize;
+        pindexPrev = NULL;
 
         // Store the pindexBest used before CreateNewBlock, to avoid races
         nTransactionsUpdatedLast = mempool.GetTransactionsUpdated();
         CBlockIndex *pindexPrevNew = chainActive.Tip();
         nStart = GetTime();
 
-        // If client code didn't specify a coinbase address for the mining reward, grab one from the wallet.
-        if (coinbaseScript.empty())
-        {
-            // Note that we don't cache the exact script from this to the prevCoinbaseScript -- it's sufficient
-            // to cache the fact that client code didn't specify a coinbase address (by caching the empty script).
-            boost::shared_ptr<CReserveScript> tmpScriptPtr;
-            GetMainSignals().ScriptForMining(tmpScriptPtr);
-
-            // throw an error if shared_ptr is not valid -- this means no wallet support was compiled-in
-            if (!tmpScriptPtr)
-                throw JSONRPCError(RPC_INTERNAL_ERROR,
-                    "Wallet support is not compiled-in, please specify an address for the coinbase tx");
-
-            // If the keypool is exhausted, the shared_ptr is valid but no actual script is generated; catch this.
-            if (tmpScriptPtr->reserveScript.empty())
-                throw JSONRPCError(
-                    RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
-
-            // Everything checks out, proceed with the wallet-generated address. Note that we don't tell the wallet to
-            // "KeepKey" this address -- which means future calls will return the same address from the wallet for
-            // future mining candidates, which is fine and good (since these are, after all, mining *candidates*).
-            // This also means that the bitcoin-miner program will continue to mine to the same key for all blocks,
-            // which is fine. If client code wants something more sophisticated, it can always specify coinbaseScript.
-            coinbaseScript = tmpScriptPtr->reserveScript;
-        }
-
         // Create new block
-        pblocktemplate = BlockAssembler(Params()).CreateNewBlock(coinbaseScript, coinbaseSize);
+        // add for diskcoin
+        CTxDestination funddestination = DecodeDestination(FUND_PUB_ADDRESS);
+        if (!IsValidDestination(funddestination))
+        {
+            throw std::runtime_error("invalid fund address");
+        }
+        CScript scriptFundPubKey = GetScriptForDestination(funddestination);
+
+        boost::shared_ptr<CReserveScript> coinbaseScript;
+        GetMainSignals().ScriptForMining(coinbaseScript);
+
+        // If the keypool is exhausted, no script is returned at all.  Catch this.
+        if (!coinbaseScript)
+            throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
+
+        // throw an error if no script was provided
+        if (coinbaseScript->reserveScript.empty())
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "No coinbase script available (mining requires a wallet)");
+
+
+        pblocktemplate = BlockAssembler(Params()).CreateNewBlock(scriptFundPubKey, coinbaseScript->reserveScript, coinbaseSize);
         if (!pblocktemplate)
             throw JSONRPCError(RPC_OUT_OF_MEMORY, "Out of memory");
 
@@ -760,6 +748,7 @@ UniValue mkblocktemplate(const UniValue &params,
             mempool.GetTransactionsUpdated(), nTransactionsUpdatedLast, GetTime(), nStart);
     }
     CBlock *pblock = &pblocktemplate->block; // pointer for convenience
+    const Consensus::Params &consensusParams = Params().GetConsensus();
 
     // Update nTime
     UpdateTime(pblock, consensusParams, pindexPrev);
@@ -893,7 +882,6 @@ UniValue SubmitBlock(CBlock &block)
     bool fBlockPresent = false;
     {
         CBlockIndex *pindex = LookupBlockIndex(hash);
-        READLOCK(cs_mapBlockIndex);
         if (pindex)
         {
             if (pindex->IsValid(BLOCK_VALID_SCRIPTS))
@@ -916,7 +904,7 @@ UniValue SubmitBlock(CBlock &block)
     // that has more work than our block.
     PV->StopAllValidationThreads(block.GetBlockHeader().nBits);
 
-    bool fAccepted = ProcessNewBlock(state, Params(), nullptr, &block, true, nullptr, false);
+    bool fAccepted = ProcessNewBlock(state, Params(), NULL, &block, true, NULL, false);
     UnregisterValidationInterface(&sc);
     if (fBlockPresent)
     {
@@ -1081,16 +1069,243 @@ UniValue estimatesmartpriority(const UniValue &params, bool fHelp)
     return result;
 }
 
+UniValue getMiningInfo(const UniValue &params, bool fHelp)
+{
+    if (fHelp)
+	    throw runtime_error(
+	    	"getMiningInfo\n"
+            "\nReturns a json object containing current mining information.\n"
+			"\nResult:\n"
+            "{\n"
+            "  \"height\": nnn,                 (integer) Next block height\n"
+            "  \"baseTarget\": nnn,             (numeric) Next block base target\n"
+            "  \"generationSignature\": \"xxx\",(numeric) Next block generation signature\n"
+            "  \"targetDeadline\": nnn          (numeric) Next block target deadline\n"
+            "}\n"
+            "\nExamples:\n" +
+            HelpExampleCli("getMiningInfo", "")+
+            HelpExampleRpc("getMiningInfo", ""));
+
+
+	int height = -1;
+    const unsigned char *plain = (const unsigned char *)"";
+    int64_t bt = 0;
+
+    CBlockIndex *pindex = chainActive.Tip();
+    if (!pindex || pindex->nTime + 2*86400 < GetTime()) {
+        throw JSONRPCError(RPC_IN_WARMUP, "wait init blocks ...");
+    }
+    int stake_height = stakedb_get_height();
+    if (stake_height==-1 || (pindex->nHeight != 0 && pindex->nHeight < stake_height)) {
+
+        throw JSONRPCError(RPC_IN_WARMUP, "wait down blocks ...");
+    }
+    {
+        LOCK(cs_main);
+        height = chainActive.Height();
+        if (height >= 0) {
+            plain = chainActive.GetGenerationSignature();
+            bt = chainActive.GetBaseTarget();
+        }
+    }
+	if (-1 == height)
+	{
+		throw JSONRPCError(RPC_IN_WARMUP, "initialize blocks ...");
+	}
+
+	UniValue result(UniValue::VOBJ);
+	
+    bool need_encrypt = false; //encrypt anyway
+    // const unsigned char *plain = chainActive.GetGenerationSignature();
+    unsigned char cipher[33];
+
+    if (need_encrypt) {
+        unsigned char key[32];
+        snprintf((char*)key, sizeof(key)-1, "DISKCOIN%-8d", height+1);
+        AES128Encrypt enc(key);
+        enc.Encrypt(&cipher[0], plain);
+        enc.Encrypt(&cipher[16], plain+16);
+        plain = cipher;
+    }
+
+	result.pushKV("height", height+1);
+	result.pushKV("baseTarget", i64tostr(bt));
+    result.pushKV("generationSignature", HexEncode(plain, 32));
+    if (need_encrypt) {
+        result.pushKV("targetDeadline", uint64_t(2147483647)); // int32 max value, encrypt
+    } else {
+        result.pushKV("targetDeadline", uint64_t(4294967295)); // uint32 max value, not
+    }
+	
+	return result;
+}
+
+UniValue submitNonce(const UniValue &params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 4)
+	    throw runtime_error(
+	        "submitNonce nonce plotterId (height) (deadline)\n"
+            "\nSubmit mining nonce, and returns a json object containing confirmed deadline."
+            "\nArguments:\n"
+            "1. \"nonce\"           (string, required) Nonce\n"
+            "2. \"plotterId\"       (string, required) Plotter ID\n"
+            "3. \"height\"          (numeric, optional) Target height for mining, default current mining height\n"
+            "4. \"deadline\"        (numeric, optional) original deadline\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"result\": \"xxx\", (string) 'success' or error message\n"
+            "  \"deadline\": nnn,   (numeric) confirmed deadline\n"
+            "  \"height\": nnn,     (numeric) target block height\n"
+            "}\n"
+            "\nExamples:\n" +
+            HelpExampleCli("submitNonce", "\"6054938129616950179\" \"41530488751042841\" 123321")+
+            HelpExampleRpc("submitNonce", "\"6054938129616950179\",\"41530488751042841\",123321"));
+
+    CBlockIndex *pindex = chainActive.Tip();
+    if (!pindex || pindex->nTime + 2*86400 < GetTime()) {
+        throw JSONRPCError(RPC_IN_WARMUP, "wait init blocks ...");
+    }
+    int stake_height = stakedb_get_height();
+    if (stake_height==-1 || (pindex->nHeight != 0 && pindex->nHeight < stake_height)) {
+        throw JSONRPCError(RPC_IN_WARMUP, "wait down blocks ...");
+    }
+
+    uint64_t height = 0;
+    {
+        LOCK(cs_main);
+        height = chainActive.Height() + 1;
+    }
+    
+	uint64_t base_target = 0;
+	uint64_t nonce = 0;
+	uint64_t plotter_id = 0; 
+    uint64_t deadline = 0;
+	unsigned char signature[32] = {};
+
+	if (!ParseUint64(params[0].get_str(), &nonce))
+	{
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "args nonce error");	
+	}
+	if (!ParseUint64(params[1].get_str(), &plotter_id))
+	{
+		throw JSONRPCError(RPC_INVALID_PARAMETER, "args plotter id error");	
+	}
+    if ((plotter_id >> 56) > 0) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "plotter id must less than 0x00ffffffffffffff");
+    }
+	
+    uint64_t tmph = 0;
+	if (3 <= params.size() && (tmph = params[2].get_uint64()) != 0)
+	{
+		if (tmph > height)
+		{
+			throw JSONRPCError(RPC_INVALID_PARAMETER, "args height large than current height");
+		}
+        if (tmph < height) {
+            LOGA("submitNonce height !==! %d <> %d", height, tmph);
+            height = tmph;
+
+            LOCK(cs_main);
+            const CBlockIndex *pblock = chainActive[height];
+            if (NULL == pblock)
+            {
+                throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "get target block index error");
+            }
+            memcpy(signature, pblock->GetBlockHeader().sig, 32);
+            base_target = pblock->GetBlockHeader().nBaseTarget;
+        } // else not set basetarget
+	} //not set basetarget
+	
+    if (base_target == 0) {
+        LOCK(cs_main);
+        // height = chainActive.Height() + 1;
+		memcpy(signature, chainActive.GetGenerationSignature(), 32);
+		base_target = chainActive.GetBaseTarget();
+	}
+
+    uint64_t retdl = 0;
+    bool is_fast=false, not_match=false, is_update=false;
+    if (4 <= params.size() && (deadline=params[3].get_uint64()) != 0 && FastCheckSubmitCache(height, deadline/base_target)) {
+        is_fast = true;
+        retdl = deadline; 
+    } else {
+        retdl = CalculateBest(height, signature, plotter_id, nonce);
+        if (deadline != 0 && retdl != deadline) {
+            not_match=true;
+        }
+        uint64_t height2 = 0;
+        {
+            LOCK(cs_main);
+            height2 = chainActive.Height()+1;
+        }
+        if (height == height2)
+        {
+            is_update = SetSubmitCache(height, nonce, plotter_id, retdl/base_target);
+        }
+    }
+    LOGA("ToCalc(height,sig,pid,nonce)=(%d, %s, %llu, %llu)=%llu / %llu=%llu Fast?=%d NotMatch?=%d Update?=%d", height, 
+        HexEncode(signature, 32), plotter_id, nonce, retdl, base_target, retdl/base_target, is_fast, not_match, is_update);
+
+
+	UniValue result(UniValue::VOBJ);
+	result.pushKV("height", height);
+	result.pushKV("deadline", retdl/base_target);
+    result.pushKV("accountId", plotter_id);
+	result.pushKV("requestProcessingTime", 0);
+    result.pushKV("is_fast", is_fast);
+    result.pushKV("is_update", is_update);
+
+    //just for solo, pool MUST be set to 0, otherwise it will not report its better dl
+    /*CSubmit sm;
+    GetSubmitCache(&sm);
+    if (sm.deadline < retdl/base_target) {
+        result.pushKV("targetDeadline", sm.deadline);
+    }
+    */
+	return result;
+}
+
+UniValue addblackplotterid(const UniValue &params, bool fHelp)
+{
+    if (fHelp || 1 != params.size())
+	    throw runtime_error("addblackplotterid plotterId\n"
+	                        "\nAdd plotter id to blacklist and ignore to submit.\n"
+	                        "\nArguments:\n"
+	                        "1. plotterId     (string, required) Plotter ID.\n"
+	                        "\nResult\n"
+	                        "\n[ result ]     (string) Submit result: 'success' or others.\n"
+	                        "\nExamples:\n"+
+	                        HelpExampleCli("addblackplotterid", "\"13312763941371615335\"")+
+	                        HelpExampleRpc("addblackplotterid", "\"13312763941371615335\""));
+
+	uint64_t plotter_id = 0;
+	ParseUint64(params[0].get_str(), &plotter_id);
+
+	AddBlacklist(plotter_id);
+	
+	UniValue result("success");
+	return result;
+}
+
 static const CRPCCommand commands[] = {
     //  category              name                      actor (function)         okSafeMode
     //  --------------------- ------------------------  -----------------------  ----------
-    {"mining", "getnetworkhashps", &getnetworkhashps, true}, {"mining", "getmininginfo", &getmininginfo, true},
+    {"mining", "getnetworkhashps", &getnetworkhashps, true}, 
+    {"mining", "getmininginfo", &getmininginfo, true},
     {"mining", "prioritisetransaction", &prioritisetransaction, true},
-    {"mining", "getblocktemplate", &getblocktemplate, true}, {"mining", "submitblock", &submitblock, true},
+    {"mining", "getblocktemplate", &getblocktemplate, true}, 
+    {"mining", "submitblock", &submitblock, true},
 
-    {"generating", "generate", &generate, true}, {"generating", "generatetoaddress", &generatetoaddress, true},
+    // diskcoin
+    {"mining", "getMiningInfo", &getMiningInfo, true},
+    {"mining", "submitNonce", &submitNonce, true},
+    {"mining", "addblackplotterid", &addblackplotterid, true},
 
-    {"util", "estimatefee", &estimatefee, true}, {"util", "estimatepriority", &estimatepriority, true},
+    // {"generating", "generate", &generate, true}, 
+    // {"generating", "generatetoaddress", &generatetoaddress, true},
+
+    {"util", "estimatefee", &estimatefee, true}, 
+    {"util", "estimatepriority", &estimatepriority, true},
     {"util", "estimatesmartfee", &estimatesmartfee, true},
     {"util", "estimatesmartpriority", &estimatesmartpriority, true},
 };

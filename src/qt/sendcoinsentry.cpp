@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -30,7 +30,7 @@ SendCoinsEntry::SendCoinsEntry(const PlatformStyle *_platformStyle, QWidget *par
 
     ui->messageTextLabel->setToolTip(tr("A message that was attached to the %1 URI which will be"
                                         " stored with the transaction for your reference. Note: "
-                                        "This message will not be sent over the Bitcoin network.")
+                                        "This message will not be sent over the Diskcoin network.")
                                          .arg(GUIUtil::bitcoinURIScheme(GetConfig())));
 
     setCurrentWidget(ui->SendCoins);
@@ -43,9 +43,9 @@ SendCoinsEntry::SendCoinsEntry(const PlatformStyle *_platformStyle, QWidget *par
     ui->lineEditPublic->setPlaceholderText(tr("Enter a public label for this transaction"));
 
 
-    // normal bitcoin address field
+    // normal diskcoin address field
     GUIUtil::setupAddressWidget(ui->payTo, this);
-    // just a label for displaying bitcoin address(es)
+    // just a label for displaying diskcoin address(es)
     ui->payTo_is->setFont(GUIUtil::fixedPitchFont());
 
     // Connect signals
@@ -224,6 +224,12 @@ void SendCoinsEntry::setValue(const SendCoinsRecipient &value)
 void SendCoinsEntry::setAddress(const QString &address)
 {
     ui->payTo->setText(address);
+    ui->payAmount->setFocus();
+}
+
+void SendCoinsEntry::setSendLable(const QString &lable)
+{
+    ui->payToLabel->setText(lable);
     ui->payAmount->setFocus();
 }
 

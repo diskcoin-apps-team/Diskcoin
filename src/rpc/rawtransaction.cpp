@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,7 +11,6 @@
 #include "consensus/validation.h"
 #include "core_io.h"
 #include "dstencode.h"
-#include "index/txindex.h"
 #include "init.h"
 #include "keystore.h"
 #include "main.h"
@@ -128,16 +127,6 @@ void TxToJSON(const CTransaction &tx, const uint256 hashBlock, UniValue &entry)
     entry.pushKV("hex", EncodeHexTx(tx));
 }
 
-static bool IsTxIndexReady()
-{
-    bool fReady = false;
-    if (g_txindex)
-    {
-        fReady = g_txindex->IsSynced();
-    }
-    return fReady;
-}
-
 UniValue getrawtransaction(const UniValue &params, bool fHelp)
 {
     if (fHelp || params.size() < 1 || params.size() > 3)
@@ -196,7 +185,7 @@ UniValue getrawtransaction(const UniValue &params, bool fHelp)
             "         \"reqSigs\" : n,            (numeric) The required sigs\n"
             "         \"type\" : \"pubkeyhash\",  (string) The type, eg 'pubkeyhash'\n"
             "         \"addresses\" : [           (json array of string)\n"
-            "           \"bitcoinaddress\"        (string) bitcoin address\n"
+            "           \"diskcoinaddress\"        (string) diskcoin address\n"
             "           ,...\n"
             "         ]\n"
             "       }\n"
@@ -215,6 +204,8 @@ UniValue getrawtransaction(const UniValue &params, bool fHelp)
             HelpExampleCli("getrawtransaction", "\"mytxid\" false \"myblockhash\"") +
             HelpExampleCli("getrawtransaction", "\"mytxid\" true \"myblockhash\""));
 
+    LOCK(cs_main);
+
     bool in_active_chain = true;
     uint256 hash = ParseHashV(params[0], "parameter 1");
     CBlockIndex *blockindex = nullptr;
@@ -230,7 +221,6 @@ UniValue getrawtransaction(const UniValue &params, bool fHelp)
         uint256 blockhash = ParseHashV(params[2], "parameter 3");
         if (!blockhash.IsNull())
         {
-            READLOCK(cs_mapBlockIndex);
             BlockMap::iterator it = mapBlockIndex.find(blockhash);
             if (it == mapBlockIndex.end())
             {
@@ -248,24 +238,16 @@ UniValue getrawtransaction(const UniValue &params, bool fHelp)
         std::string errmsg;
         if (blockindex)
         {
-            READLOCK(cs_mapBlockIndex);
             if (!(blockindex->nStatus & BLOCK_HAVE_DATA))
             {
                 throw JSONRPCError(RPC_MISC_ERROR, "Block not available");
             }
             errmsg = "No such transaction found in the provided block";
         }
-        else if (!fTxIndex)
-        {
-            errmsg = "No such mempool transaction. Use -txindex to enable blockchain transaction queries";
-        }
-        else if (fTxIndex && !IsTxIndexReady())
-        {
-            errmsg = "transaction index is still syncing...try again later";
-        }
         else
         {
-            errmsg = "No such mempool or blockchain transaction";
+            errmsg = fTxIndex ? "No such mempool or blockchain transaction" :
+                                "No such mempool transaction. Use -txindex to enable blockchain transaction queries";
         }
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, errmsg + ". Use gettransaction for wallet transactions.");
     }
@@ -353,7 +335,7 @@ UniValue getrawblocktransactions(const UniValue &params, bool fHelp)
             "           \"reqSigs\" : n,            (numeric) The required sigs\n"
             "           \"type\" : \"pubkeyhash\",  (string) The type, eg 'pubkeyhash'\n"
             "           \"addresses\" : [           (json array of string)\n"
-            "             \"bitcoinaddress\"        (string) bitcoin address\n"
+            "             \"diskcoinaddress\"        (string) diskcoin address\n"
             "             ,...\n"
             "           ]\n"
             "         }\n"
@@ -505,7 +487,7 @@ UniValue getrawtransactionssince(const UniValue &params, bool fHelp)
             "             \"reqSigs\" : n,            (numeric) The required sigs\n"
             "             \"type\" : \"pubkeyhash\",  (string) The type, eg 'pubkeyhash'\n"
             "             \"addresses\" : [           (json array of string)\n"
-            "               \"bitcoinaddress\"        (string) bitcoin address\n"
+            "               \"diskcoinaddress\"        (string) diskcoin address\n"
             "               ,...\n"
             "             ]\n"
             "           }\n"
@@ -672,19 +654,7 @@ UniValue gettxoutproof(const UniValue &params, bool fHelp)
     {
         CTransactionRef tx;
         if (!GetTransaction(oneTxid, tx, Params().GetConsensus(), hashBlock, false) || hashBlock.IsNull())
-        {
-            std::string errmsg;
-            if (!fTxIndex)
-            {
-                errmsg = "No such mempool transaction. Use -txindex to enable blockchain transaction queries";
-            }
-            else if (fTxIndex && !IsTxIndexReady())
-                errmsg = "Transaction index is still syncing...try again later";
-            else
-                errmsg = "Transaction not found in transaction index";
-
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, errmsg);
-        }
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Transaction not yet in block");
         pblockindex = LookupBlockIndex(hashBlock);
         if (!pblockindex)
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Transaction index corrupt");
@@ -850,7 +820,7 @@ UniValue createrawtransaction(const UniValue &params, bool fHelp)
             "     ]\n"
             "2. \"outputs\"             (string, required) a json object with outputs\n"
             "    {\n"
-            "      \"address\": x.xxx   (numeric or string, required) The key is the bitcoin address, the numeric "
+            "      \"address\": x.xxx   (numeric or string, required) The key is the diskcoin address, the numeric "
             "value (can be string) is the " +
             CURRENCY_UNIT +
             " amount\n"
@@ -940,20 +910,27 @@ UniValue createrawtransaction(const UniValue &params, bool fHelp)
         }
         else
         {
-            CTxDestination destination = DecodeDestination(name_);
+            CAmount nAmount = AmountFromValue(sendTo[name_]);
+            
+            std::string ___name_ = name_;
+            const char *pstr = strpbrk(name_.c_str(), "-_/.");
+            if (pstr) {
+                ___name_.assign(name_.c_str(), pstr - name_.c_str());
+            }
+
+            CTxDestination destination = DecodeDestination(___name_);
             if (!IsValidDestination(destination))
             {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Bitcoin address: ") + name_);
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Diskcoin address: ") + ___name_);
             }
 
-            if (!destinations.insert(destination).second)
-            {
-                throw JSONRPCError(
-                    RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + name_);
-            }
+            // if (!destinations.insert(destination).second)
+            // {
+            //     throw JSONRPCError(
+            //         RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + ___name_);
+            // }
 
             CScript scriptPubKey = GetScriptForDestination(destination);
-            CAmount nAmount = AmountFromValue(sendTo[name_]);
 
             CTxOut out(nAmount, scriptPubKey);
             rawTx.vout.push_back(out);
@@ -1002,7 +979,7 @@ UniValue decoderawtransaction(const UniValue &params, bool fHelp)
                             "         \"reqSigs\" : n,            (numeric) The required sigs\n"
                             "         \"type\" : \"pubkeyhash\",  (string) The type, eg 'pubkeyhash'\n"
                             "         \"addresses\" : [           (json array of string)\n"
-                            "           \"12tvKAXCxZjSmdNbao16dKXC8tRWfcF5oc\"   (string) bitcoin address\n"
+                            "           \"12tvKAXCxZjSmdNbao16dKXC8tRWfcF5oc\"   (string) diskcoin address\n"
                             "           ,...\n"
                             "         ]\n"
                             "       }\n"
@@ -1043,7 +1020,7 @@ UniValue decodescript(const UniValue &params, bool fHelp)
                             "  \"type\":\"type\", (string) The output type\n"
                             "  \"reqSigs\": n,    (numeric) The required signatures\n"
                             "  \"addresses\": [   (json array of string)\n"
-                            "     \"address\"     (string) bitcoin address\n"
+                            "     \"address\"     (string) diskcoin address\n"
                             "     ,...\n"
                             "  ],\n"
                             "  \"p2sh\",\"address\" (string) script address\n"
@@ -1156,7 +1133,7 @@ UniValue signrawtransaction(const UniValue &params, bool fHelp)
             HelpExampleCli("signrawtransaction", "\"myhex\"") + HelpExampleRpc("signrawtransaction", "\"myhex\""));
 
 #ifdef ENABLE_WALLET
-    LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : nullptr);
+    LOCK2(cs_main, pwalletMain ? &pwalletMain->cs_wallet : NULL);
 #else
     LOCK(cs_main);
 #endif
@@ -1190,7 +1167,7 @@ UniValue signrawtransaction(const UniValue &params, bool fHelp)
     CCoinsView viewDummy;
     CCoinsViewCache view(&viewDummy);
     {
-        READLOCK(mempool.cs_txmempool);
+        READLOCK(mempool.cs);
         CCoinsViewCache &viewChain = *pcoinsTip;
         CCoinsViewMemPool viewMempool(&viewChain, mempool);
         view.SetBackend(viewMempool); // temporarily switch cache backend to db+mempool view
@@ -1498,215 +1475,6 @@ UniValue sendrawtransaction(const UniValue &params, bool fHelp)
     return hashTx.GetHex();
 }
 
-void InputDebuggerToJSON(const CInputDebugger &input, UniValue &result)
-{
-    std::map<std::string, std::string>::const_iterator it;
-
-    result.pushKV("isValid", input.isValid);
-    UniValue uv_vdata(UniValue::VARR);
-    for (auto &data : input.vData)
-    {
-        UniValue entry(UniValue::VOBJ);
-        entry.pushKV("isValid", data.isValid);
-        UniValue entry_metadata(UniValue::VOBJ);
-        for (it = data.metadata.begin(); it != data.metadata.end(); ++it)
-        {
-            entry_metadata.pushKV(it->first, it->second);
-        }
-        entry.pushKV("metadata", entry_metadata);
-        UniValue entry_errors(UniValue::VARR);
-        for (auto &error : data.errors)
-        {
-            entry_errors.push_back(error);
-        }
-        entry.pushKV("errors", entry_errors);
-        uv_vdata.push_back(entry);
-    }
-    result.pushKV("inputs", uv_vdata);
-}
-
-UniValue validaterawtransaction(const UniValue &params, bool fHelp)
-{
-    if (fHelp || params.size() < 1 || params.size() > 3)
-    {
-        throw std::runtime_error(
-            "validaterawtransaction \"hexstring\" ( allowhighfees, allownonstandard )\n"
-            "\nValidates raw transaction (serialized, hex-encoded) to local node without broadcasting it.\n"
-            "\nAlso see createrawtransaction and signrawtransaction calls.\n"
-            "\nArguments:\n"
-            "1. \"hexstring\"    (string, required) The hex string of the raw transaction)\n"
-            "2. allowhighfees    (boolean, optional, default=false) Allow high fees\n"
-            "3. allownonstandard (string 'standard', 'nonstandard', 'default', optional, default='default')\n"
-            "                    Force standard or nonstandard transaction check\n"
-            "\nResult:\n"
-            "{\n"
-            "  \"txid\" : \"value\",           (string) The transaction hash\n"
-            "  \"isValid\" : true|false,   (boolean) If the transaction has a complete set of signatures\n"
-            "  \"isMineable\" : true|false,   (boolean) If the transaction is mineable now\n"
-            "  \"isFutureMineable\" : true|false,   (boolean) If the transaction is mineable in the future\n"
-            "  \"isStandard\" : true|false,   (boolean) If the transaction is standard\n"
-            "  \"metadata\" : {\n"
-            "       \"size\" : value,        (numeric) The size of the transaction in bytes\n"
-            "       \"fee\" : value,         (numeric) The amount of fee included in the transaction in satoshi\n"
-            "       \"feeneeded\" : value,   (numeric) The amount of fee needed for the transactio in satoshi\n"
-            "    },"
-            "  \"errors\" : [                 (json array) Script verification errors (if there are any)\n"
-            "      \"reason\",           (string) A reason the tx would be rejected by the mempool\n"
-            "        ...\n"
-            "    ],\n"
-            "  \"input_flags\" : {\n"
-            "       \"isValid\" : true|false,        (boolean) Are all of the tx inputs valid with standard flags\n"
-            "       \"inputs\" : [\n"
-            "           \"isValid\" : true|false,        (boolean) is this input valid with standard flags\n"
-            "           \"metadata\" : {\n"
-            "               \"prevtx\" : value,        (string) The hash of the referenced, previous transaction\n"
-            "               \"n\" : value,         (numeric) The index of the output to spent and used as input\n"
-            "               \"scriptPubKey\" : value,   (string) The hex-encoded signature pubkey\n"
-            "               \"scriptSig\" : value,   (string) The hex-encoded signature script\n"
-            "               \"amount\" : value,   (numeric) The value of the output spent\n"
-            "             },\n"
-            "           \"errors\" : [                 (json array) standard flag errors with the input (if there are "
-            "any)\n"
-            "               \"reason\",           (string) A reason the input would be rejected with standard flags\n"
-            "                ...\n"
-            "             ]\n"
-            "       ]\n"
-            "    },\n"
-            "  \"inputs_mandatoryFlags\" : {\n"
-            "       \"isValid\" : true|false,        (boolean) Are all of the tx inputs valid with mandatory flags\n"
-            "       \"inputs\" : [\n"
-            "           \"isValid\" : true|false,        (boolean) is this input valid with mandatory flags\n"
-            "           \"metadata\" : {\n"
-            "               \"prevtx\" : value,        (string) The hash of the referenced, previous transaction\n"
-            "               \"n\" : value,         (numeric) The index of the output to spent and used as input\n"
-            "               \"scriptPubKey\" : value,   (string) The hex-encoded signature pubkey\n"
-            "               \"scriptSig\" : value,   (string) The hex-encoded signature script\n"
-            "               \"amount\" : value,   (numeric) The value of the output spent\n"
-            "             },\n"
-            "           \"errors\" : [                 (json array) mandatory flag errors with the input (if there are "
-            "any)\n"
-            "               \"reason\",           (string) A reason the input would be rejected with mandatory flags\n"
-            "                ...\n"
-            "             ]\n"
-            "       ]\n"
-            "    }\n"
-            "}\n"
-            "\nExamples:\n"
-            "\nCreate a transaction\n" +
-            HelpExampleCli("createrawtransaction",
-                "\"[{\\\"txid\\\" : \\\"mytxid\\\",\\\"vout\\\":0}]\" \"{\\\"myaddress\\\":0.01}\"") +
-            "Sign the transaction, and get back the hex\n" + HelpExampleCli("signrawtransaction", "\"myhex\"") +
-            "\nSend the transaction (signed hex)\n" + HelpExampleCli("sendrawtransaction", "\"signedhex\"") +
-            "\nAs a json rpc call\n" + HelpExampleRpc("validaterawtransaction", "\"signedhex\""));
-    }
-
-    RPCTypeCheck(params, boost::assign::list_of(UniValue::VSTR)(UniValue::VBOOL)(UniValue::VSTR));
-
-    // parse hex string from parameter
-    CTransaction tx;
-    if (!DecodeHexTx(tx, params[0].get_str()))
-        throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "TX decode failed");
-    CTransactionRef ptx(MakeTransactionRef(std::move(tx)));
-    const uint256 &hashTx = ptx->GetHash();
-
-    bool fOverrideFees = false;
-    TransactionClass txClass = TransactionClass::DEFAULT;
-
-    // 2nd parameter allows high fees
-    if (params.size() > 1)
-    {
-        if (params[1].isBool())
-        {
-            fOverrideFees = params[1].get_bool();
-        }
-        else if (params[1].isStr())
-        {
-            std::string maybeOverride = params[1].get_str();
-            if (maybeOverride == "allowhighfees")
-            {
-                fOverrideFees = true;
-            }
-            else if (maybeOverride == "allowhighfees")
-            {
-                fOverrideFees = false;
-            }
-            else
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid allowhighfees value");
-            }
-        }
-        else
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid allowhighfees value");
-        }
-    }
-    // 3rd parameter must be the transaction class
-    if (params.size() > 2)
-    {
-        txClass = ParseTransactionClass(params[2].get_str());
-        if (txClass == TransactionClass::INVALID)
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid transaction class");
-    }
-
-    CCoinsViewCache &view = *pcoinsTip;
-    bool fHaveChain = false;
-    {
-        for (size_t i = 0; !fHaveChain && i < tx.vout.size(); i++)
-        {
-            CoinAccessor existingCoin(view, COutPoint(hashTx, i));
-            fHaveChain = !existingCoin->IsSpent();
-        }
-    }
-    UniValue result(UniValue::VOBJ);
-    bool fHaveMempool = mempool.exists(hashTx);
-    CValidationDebugger debugger;
-    if (!fHaveMempool && !fHaveChain)
-    {
-        CValidationState state;
-        bool fMissingInputs = false;
-        std::vector<COutPoint> vCoinsToUncache;
-        bool isRespend = false;
-        ParallelAcceptToMemoryPool(txHandlerSnap, mempool, state, std::move(ptx), false, &fMissingInputs, false,
-            fOverrideFees, txClass, vCoinsToUncache, &isRespend, &debugger);
-    }
-    else if (fHaveChain)
-    {
-        throw JSONRPCError(RPC_TRANSACTION_ALREADY_IN_CHAIN, "transaction already in block chain");
-    }
-
-    result.pushKV("txid", debugger.txid);
-    result.pushKV("isValid", debugger.IsValid());
-    result.pushKV("isMineable", debugger.mineable);
-    result.pushKV("isFutureMineable", debugger.futureMineable);
-    result.pushKV("isStandard", debugger.standard);
-
-    UniValue uv_txmetadata(UniValue::VOBJ);
-    std::map<std::string, std::string>::iterator it;
-    for (it = debugger.txMetadata.begin(); it != debugger.txMetadata.end(); ++it)
-    {
-        uv_txmetadata.pushKV(it->first, it->second);
-    }
-    result.pushKV("metadata", uv_txmetadata);
-
-    UniValue uv_errors(UniValue::VARR);
-    std::vector<std::string> strRejectReasons = debugger.GetRejectReasons();
-    for (auto &error : strRejectReasons)
-    {
-        uv_errors.push_back(error);
-    }
-    result.pushKV("errors", uv_errors);
-
-    UniValue uv_inputCheck1(UniValue::VOBJ);
-    CInputDebugger input1 = debugger.GetInputCheck1();
-    InputDebuggerToJSON(input1, uv_inputCheck1);
-    result.pushKV("inputs_flags", uv_inputCheck1);
-
-    UniValue uv_inputCheck2(UniValue::VOBJ);
-    CInputDebugger input2 = debugger.GetInputCheck2();
-    InputDebuggerToJSON(input2, uv_inputCheck2);
-    result.pushKV("inputs_mandatoryFlags", uv_inputCheck2);
-    return result;
-}
 
 UniValue enqueuerawtransaction(const UniValue &params, bool fHelp)
 {
@@ -1755,13 +1523,13 @@ static const CRPCCommand commands[] = {
     //  category              name                      actor (function)         okSafeMode
     //  --------------------- ------------------------  -----------------------  ----------
     {"rawtransactions", "getrawtransaction", &getrawtransaction, true},
+    {"rawtransactions", "getrawtransaction", &getrawtransaction, true},
     {"rawtransactions", "getrawblocktransactions", &getrawblocktransactions, true},
     {"rawtransactions", "getrawtransactionssince", &getrawtransactionssince, true},
     {"rawtransactions", "createrawtransaction", &createrawtransaction, true},
     {"rawtransactions", "decoderawtransaction", &decoderawtransaction, true},
     {"rawtransactions", "decodescript", &decodescript, true},
     {"rawtransactions", "sendrawtransaction", &sendrawtransaction, false},
-    {"rawtransactions", "validaterawtransaction", validaterawtransaction, false},
     {"rawtransactions", "enqueuerawtransaction", &enqueuerawtransaction, false},
     {"rawtransactions", "signrawtransaction", &signrawtransaction, false}, /* uses wallet if enabled */
 

@@ -22,7 +22,7 @@ const std::string CBaseChainParams::REGTEST = "regtest";
 class CBaseMainParams : public CBaseChainParams
 {
 public:
-    CBaseMainParams() { nRPCPort = 8332; }
+    CBaseMainParams() { nRPCPort = 63336; }
 };
 static CBaseMainParams mainParams;
 
@@ -48,7 +48,7 @@ class CBaseTestNetParams : public CBaseChainParams
 public:
     CBaseTestNetParams()
     {
-        nRPCPort = 18332;
+        nRPCPort = 63338;
         strDataDir = "testnet3";
     }
 };
@@ -62,7 +62,7 @@ class CBaseRegTestParams : public CBaseChainParams
 public:
     CBaseRegTestParams()
     {
-        nRPCPort = 18332;
+        nRPCPort = 63340;
         strDataDir = "regtest";
     }
 };
@@ -108,4 +108,4 @@ std::string ChainNameFromCommandLine()
     return CBaseChainParams::MAIN;
 }
 
-bool AreBaseParamsConfigured() { return pCurrentBaseParams != nullptr; }
+bool AreBaseParamsConfigured() { return pCurrentBaseParams != NULL; }

@@ -1,5 +1,4 @@
 // Copyright (c) 2015 G. Andrew Stone
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -48,8 +47,8 @@ void UnlimitedModel::Init()
     // Ensure restart flag is unset on client startup
     setRestartRequired(false);
 
-    uint64_t tmpExcessiveBlockSize = excessiveBlockSize;
-    uint64_t tmpMaxGeneratedBlock = maxGeneratedBlock;
+    unsigned int tmpExcessiveBlockSize = excessiveBlockSize;
+    unsigned int tmpMaxGeneratedBlock = maxGeneratedBlock;
 
     if (!settings.contains("maxGeneratedBlock"))
         settings.setValue("maxGeneratedBlock", QString::number(maxGeneratedBlock));

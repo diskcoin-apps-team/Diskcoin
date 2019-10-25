@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -99,6 +99,10 @@ TransactionView::TransactionView(const PlatformStyle *platformStyle, QWidget *pa
     typeWidget->addItem(tr("Sent to"), TransactionFilterProxy::TYPE(TransactionRecord::SendToAddress) |
                                            TransactionFilterProxy::TYPE(TransactionRecord::SendToOther));
     typeWidget->addItem(tr("To yourself"), TransactionFilterProxy::TYPE(TransactionRecord::SendToSelf));
+    typeWidget->addItem(tr("Stake in"), TransactionFilterProxy::TYPE(TransactionRecord::StakeIn));
+    typeWidget->addItem(tr("Stake out"), TransactionFilterProxy::TYPE(TransactionRecord::StakeOut));
+    typeWidget->addItem(tr("Stake from"), TransactionFilterProxy::TYPE(TransactionRecord::StakeFrom));
+    typeWidget->addItem(tr("Unstake"), TransactionFilterProxy::TYPE(TransactionRecord::UnStake));
     typeWidget->addItem(tr("Mined"), TransactionFilterProxy::TYPE(TransactionRecord::Generated));
     typeWidget->addItem(tr("Other"), TransactionFilterProxy::TYPE(TransactionRecord::Other));
 
@@ -155,6 +159,8 @@ TransactionView::TransactionView(const PlatformStyle *platformStyle, QWidget *pa
     QAction *copyAmountAction = new QAction(tr("Copy amount"), this);
     QAction *copyTxIDAction = new QAction(tr("Copy transaction ID"), this);
     QAction *copyTxHexAction = new QAction(tr("Copy raw transaction"), this);
+    // we need to enable/disable this
+    unstakeAction = new QAction(tr("Unstake"), this);
     QAction *editLabelAction = new QAction(tr("Edit label"), this);
     QAction *showDetailsAction = new QAction(tr("Show transaction details"), this);
 
@@ -164,6 +170,7 @@ TransactionView::TransactionView(const PlatformStyle *platformStyle, QWidget *pa
     contextMenu->addAction(copyAmountAction);
     contextMenu->addAction(copyTxIDAction);
     contextMenu->addAction(copyTxHexAction);
+    contextMenu->addAction(unstakeAction);
     contextMenu->addAction(editLabelAction);
     contextMenu->addAction(showDetailsAction);
 
@@ -186,6 +193,7 @@ TransactionView::TransactionView(const PlatformStyle *platformStyle, QWidget *pa
     connect(copyAmountAction, SIGNAL(triggered()), this, SLOT(copyAmount()));
     connect(copyTxIDAction, SIGNAL(triggered()), this, SLOT(copyTxID()));
     connect(copyTxHexAction, SIGNAL(triggered()), this, SLOT(copyTxHex()));
+    connect(unstakeAction, SIGNAL(triggered()), this, SLOT(unstakeAct()));
     connect(editLabelAction, SIGNAL(triggered()), this, SLOT(editLabel()));
     connect(showDetailsAction, SIGNAL(triggered()), this, SLOT(showDetails()));
 }
@@ -328,7 +336,7 @@ void TransactionView::exportClicked()
 {
     // CSV is currently the only supported format
     QString filename = GUIUtil::getSaveFileName(
-        this, tr("Export Transaction History"), QString(), tr("Comma separated file (*.csv)"), nullptr);
+        this, tr("Export Transaction History"), QString(), tr("Comma separated file (*.csv)"), NULL);
 
     if (filename.isNull())
         return;
@@ -364,6 +372,22 @@ void TransactionView::exportClicked()
 
 void TransactionView::contextualMenu(const QPoint &point)
 {
+    QModelIndexList selection = transactionView->selectionModel()->selectedRows();
+
+    QString address = selection.at(0).data(TransactionTableModel::AddressRole).toString();
+    int typerole = selection.at(0).data(TransactionTableModel::TypeRole).toString().toInt();
+
+    LOGA("contextualMenu address(%s) typerole(%d).", address.toStdString(), typerole);
+
+    if (TransactionRecord::StakeIn == typerole || TransactionRecord::StakeOut == typerole)
+    {
+        unstakeAction->setEnabled(true);
+    }
+    else
+    {
+        unstakeAction->setEnabled(false);
+    }
+
     QModelIndex index = transactionView->indexAt(point);
     if (index.isValid())
     {
@@ -380,6 +404,45 @@ void TransactionView::copyAmount()
 
 void TransactionView::copyTxID() { GUIUtil::copyEntryData(transactionView, 0, TransactionTableModel::TxIDRole); }
 void TransactionView::copyTxHex() { GUIUtil::copyEntryData(transactionView, 0, TransactionTableModel::TxHexRole); }
+
+// context menu action: unstake
+void TransactionView::unstakeAct() 
+{ 
+    LOGA("unstake begin.");
+
+    QStringList formatted;
+    QString questionString = tr("Are you sure you want to unstake?<br />");
+    QString confirmString = tr("Confirm unstake coins");
+
+    QMessageBox::StandardButton retval = QMessageBox::question(this, confirmString,
+        questionString, QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+
+    if (retval != QMessageBox::Yes)
+    {
+        return;
+    }
+
+    if (!transactionView->selectionModel())
+        return;
+
+    QModelIndexList selection = transactionView->selectionModel()->selectedRows();
+    if (!selection.isEmpty())
+    {
+        //start to unstake
+
+        WalletModel::UnlockContext ctx(model->requestUnlock());
+        if (!ctx.isValid())
+        {
+            // Unlock wallet was cancelled
+            return;
+        }
+        std::string txid = selection.at(0).data(TransactionTableModel::TxIDRole).toString().toStdString();
+        LOGA("unstake get txid: %s .", txid);
+        model->unstakeCoins(txid);
+        return ;
+    }
+}
+
 void TransactionView::editLabel()
 {
     if (!transactionView->selectionModel() || !model)

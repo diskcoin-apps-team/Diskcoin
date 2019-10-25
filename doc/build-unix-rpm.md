@@ -1,9 +1,8 @@
 # UNIX BUILD NOTES (RPM)
 
-Some notes on how to build Bitcoin Unlimited in Unix. Mostly with CentOS / RHEL focus.
+Some notes on how to build Bitcoin Unlimited in Unix.
 
-For apt (Debian / Ubuntu) based distros, see [build-unix.md](build-unix.md).
-For OpenBSD specific instructions, see [build-openbsd.md](build-openbsd.md)
+(for OpenBSD specific instructions, see [build-openbsd.md](build-openbsd.md))
 
 ## Note
 
@@ -20,8 +19,6 @@ the usage of the absolute path.
 ## To Build
 
 ```bash
-git clone https://github.com/BitcoinUnlimited/BitcoinUnlimited.git
-cd BitcoinUnlimited
 ./autogen.sh
 ./configure
 make
@@ -71,8 +68,8 @@ sudo yum install centos-release-scl
 sudo yum install http://repo.okay.com.mx/centos/7/x86_64/release/okay-release-1-1.noarch.rpm
 sudo yum install boost166-devel
 sudo yum install libtool libevent-devel autoconf automake openssl-devel python36u libdb4-devel libdb4-cxx-devel
-sudo yum install devtoolset-7-gcc*
-sudo scl enable devtoolset-7 bash
+sudo yum install devtoolset-6-gcc*
+sudo scl enable devtoolset-6 bash
 ```
 
 Create/update symlink for python3 if needed:

@@ -1,5 +1,5 @@
 // Copyright (c) 2015 G. Andrew Stone
-// Copyright (c) 2016-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2016-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -17,10 +17,8 @@
 #include "script/script_error.h"
 #include "stat.h"
 #include "tweak.h"
-#include "txmempool.h"
 #include "univalue/include/univalue.h"
 #include "validation/forks.h"
-
 #include <list>
 #include <thread>
 #include <vector>
@@ -32,6 +30,13 @@ enum
     // lucky, and potentially drive a block that the rest of the network sees as
     // "excessive" onto the blockchain.
 
+    // per May, 15 '18 upgrade specification the min value for min value for max accepted block size, i.e. EB, is 32 MB
+    // (github.com/bitcoincashorg/bitcoincash.org/blob/master/spec/may-2018-hardfork.md#summary)
+    MIN_EXCESSIVE_BLOCK_SIZE = 32000000,
+    MIN_EXCESSIVE_BLOCK_SIZE_REGTEST = 1000,
+    SV_EXCESSIVE_BLOCK_SIZE = 128000000,
+    DEFAULT_EXCESSIVE_BLOCK_SIZE = MIN_EXCESSIVE_BLOCK_SIZE,
+    DEFAULT_MAX_MESSAGE_SIZE_MULTIPLIER = 16, // Allowed messages lengths will be this * the excessive block size
     DEFAULT_COINBASE_RESERVE_SIZE = 1000,
     MAX_COINBASE_SCRIPTSIG_SIZE = 100,
     EXCESSIVE_BLOCK_CHAIN_RESET = 6 * 24, // After 1 day of non-excessive blocks, reset the checker
@@ -58,7 +63,7 @@ class CChainParams;
 /** Add or remove a string to indicate ongoing status */
 class CStatusString
 {
-    mutable CCriticalSection cs_status_string;
+    mutable CCriticalSection cs;
     std::set<std::string> strSet;
 
 public:
@@ -70,22 +75,21 @@ public:
 
 extern CStatusString statusStrings;
 
+
+extern uint256 bitcoinCashForkBlockHash;
+
 extern std::set<CBlockIndex *> setDirtyBlockIndex;
 extern uint32_t blockVersion; // Overrides the mined block version if non-zero
 extern uint64_t maxGeneratedBlock;
 extern uint64_t excessiveBlockSize;
 extern unsigned int excessiveAcceptDepth;
 extern unsigned int maxMessageSizeMultiplier;
-extern bool fCanonicalTxsOrder;
-
-/** This function searches the mempool for transactions that are recently acceptable into the mempools of other
-nodes and forwards any found to those nodes.
-*/
-void ForwardAcceptableTransactions(const std::vector<CTxChange> &changeSet);
 
 // Fork configuration
 /** This specifies the MTP time of the next fork */
 extern uint64_t nMiningForkTime;
+/** This specifies the MTP time of the SV fork */
+extern uint64_t nMiningSvForkTime;
 
 /** BU Default maximum number of Outbound connections to simultaneously allow*/
 extern int nMaxOutConnections;
@@ -264,7 +268,7 @@ extern CCriticalSection cs_mapInboundConnectionTracker;
 // statistics
 void UpdateSendStats(CNode *pfrom, const char *strCommand, int msgSize, int64_t nTime);
 
-void UpdateRecvStats(CNode *pfrom, const std::string &strCommand, int msgSize, int64_t nStopwatchTimeReceived);
+void UpdateRecvStats(CNode *pfrom, const std::string &strCommand, int msgSize, int64_t nTimeReceived);
 // txn mempool statistics
 extern CStatHistory<unsigned int> txAdded;
 extern CStatHistory<uint64_t, MinValMax<uint64_t> > poolSize;
@@ -281,12 +285,12 @@ std::string MiningBlockSizeValidator(const uint64_t &value, uint64_t *item, bool
 std::string Bip135VoteValidator(const std::string &value, std::string *item, bool validate);
 // ensure that only 1 fork is active
 std::string ForkTimeValidator(const uint64_t &value, uint64_t *item, bool validate);
+std::string ForkTimeValidatorSV(const uint64_t &value, uint64_t *item, bool validate);
 
 extern CTweak<unsigned int> maxTxSize;
 extern CTweak<uint64_t> blockSigopsPerMb;
 extern CTweak<uint64_t> coinbaseReserve;
 extern CTweak<uint64_t> blockMiningSigopsPerMb;
-extern CTweak<unsigned int> unconfPushAction;
 
 extern std::list<CStatBase *> mallocedStats;
 
@@ -299,6 +303,8 @@ void InterruptBlockValidationThreads();
 // Fork configuration
 /** This specifies the MTP time of the next fork */
 extern CTweakRef<uint64_t> miningForkTime;
+/** This specifies the MTP time of the SV fork */
+extern CTweakRef<uint64_t> miningSvForkTime;
 
 // Mining-Candidate start
 /** Return a Merkle root given a Coinbase hash and Merkle proof */
@@ -313,4 +319,18 @@ public:
     CBlock block;
 };
 extern std::map<int64_t, CMiningCandidate> miningCandidatesMap;
+
+// diskcoin
+#include "miner.h"
+void GetSubmitCache(CSubmit *pSubmit);
+bool SetSubmitCache(uint64_t height, uint64_t nonce, uint64_t plotter_id, uint64_t deadline);
+bool FastCheckSubmitCache(uint64_t height, uint64_t deadline);
+
+void UpdateBlacklist(const std::vector<uint64_t>& data);
+
+std::vector<uint64_t> GetBlacklist();
+
+void AddBlacklist(uint64_t plotter_id);
+
+
 #endif

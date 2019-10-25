@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -42,9 +42,15 @@ public:
 public Q_SLOTS:
     void setBalance(const CAmount &balance,
         const CAmount &unconfirmedBalance,
+        const CAmount &stakeBalance,
+        const CAmount &staketoBalance,
+        const CAmount &unstakingBalance,
         const CAmount &immatureBalance,
         const CAmount &watchOnlyBalance,
         const CAmount &watchUnconfBalance,
+        const CAmount &watchStakeBalance,
+        const CAmount &watchStaketoBalance,
+        const CAmount &watchUnstakingBalance,
         const CAmount &watchImmatureBalance);
 
 Q_SIGNALS:
@@ -56,9 +62,15 @@ private:
     WalletModel *walletModel;
     CAmount currentBalance;
     CAmount currentUnconfirmedBalance;
+    CAmount currentStakeBalance;
+    CAmount currentStaketoBalance;
+    CAmount currentUnstakingBalance;
     CAmount currentImmatureBalance;
     CAmount currentWatchOnlyBalance;
     CAmount currentWatchUnconfBalance;
+    CAmount currentWatchStakeBalance;
+    CAmount currentWatchStaketoBalance;
+    CAmount currentWatchUnstakingBalance;
     CAmount currentWatchImmatureBalance;
 
     TxViewDelegate *txdelegate;

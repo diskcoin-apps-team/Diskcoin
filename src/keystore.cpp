@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -69,7 +69,7 @@ static bool ExtractPubKey(const CScript &dest, CPubKey &pubKeyOut)
     CScript::const_iterator pc = dest.begin();
     opcodetype opcode;
     std::vector<unsigned char> vch;
-    if (!dest.GetOp(pc, opcode, vch) || !CPubKey::ValidSize(vch))
+    if (!dest.GetOp(pc, opcode, vch) || vch.size() < 33 || vch.size() > 65)
         return false;
     pubKeyOut = CPubKey(vch);
     if (!pubKeyOut.IsFullyValid())

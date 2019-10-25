@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Copyright (c) 2016 Bitcoin Unlimited Developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -23,6 +23,7 @@
 #include "sync.h"
 #include "txdb.h"
 #include "versionbits.h"
+#include "bloom.h"
 
 #include <algorithm>
 #include <exception>
@@ -57,8 +58,41 @@ extern CCoinsViewDB *pcoinsdbview;
 static const bool DEFAULT_WHITELISTRELAY = true;
 /** Default for DEFAULT_WHITELISTFORCERELAY. */
 static const bool DEFAULT_WHITELISTFORCERELAY = true;
+/** Default for -minrelaytxfee, minimum relay fee for transactions */
+static const unsigned int DEFAULT_MIN_RELAY_TX_FEE = 1000;
+//! -maxtxfee default
+static const CAmount DEFAULT_TRANSACTION_MAXFEE = 0.1 * COIN;
+//! Discourage users to set fees higher than this amount (in satoshis) per kB
+static const CAmount HIGH_TX_FEE_PER_KB = 0.01 * COIN;
+//! -maxtxfee will warn if called with a higher fee than this amount (in satoshis)
+static const CAmount HIGH_MAX_TX_FEE = 100 * HIGH_TX_FEE_PER_KB;
+/** Default for -maxorphantx, maximum number of orphan transactions kept in memory.
+ *  A high default is chosen which allows for about 1/10 of the default mempool to
+ *  be kept as orphans, assuming 250 byte transactions.  We are essentially disabling
+ *  the limiting or orphan transactions by number and using orphan pool bytes as
+ *  the limiting factor, while at the same time allowing node operators to
+ *  limit by number if transactions if they wish by modifying -maxorphantx=<n> if
+ *  the have a need to.
+ */
+static const unsigned int DEFAULT_MAX_ORPHAN_TRANSACTIONS = 1000000;
+/** Default for -limitancestorcount, max number of in-mempool ancestors */
+static const unsigned int DEFAULT_ANCESTOR_LIMIT = 25;
+/** Default for -limitancestorsize, maximum kilobytes of tx + all in-mempool ancestors */
+static const unsigned int DEFAULT_ANCESTOR_SIZE_LIMIT = 101;
+/** Default for -limitdescendantcount, max number of in-mempool descendants */
+static const unsigned int DEFAULT_DESCENDANT_LIMIT = 25;
+/** Default for -limitdescendantsize, maximum kilobytes of in-mempool descendants */
+static const unsigned int DEFAULT_DESCENDANT_SIZE_LIMIT = 101;
+/** Default for -mempoolexpiry, expiration time for mempool transactions in hours */
+static const unsigned int DEFAULT_MEMPOOL_EXPIRY = 72;
+/** Default for -orphanpoolexpiry, expiration time for orphan pool transactions in hours */
+static const unsigned int DEFAULT_ORPHANPOOL_EXPIRY = 4;
 /** The maximum size of a blk?????.dat file (since 0.8) */
 static const unsigned int MAX_BLOCKFILE_SIZE = 0x8000000; // 128 MiB
+/** The pre-allocation chunk size for blk?????.dat files (since 0.8) */
+static const unsigned int BLOCKFILE_CHUNK_SIZE = 0x1000000; // 16 MiB
+/** The pre-allocation chunk size for rev?????.dat files (since 0.8) */
+static const unsigned int UNDOFILE_CHUNK_SIZE = 0x100000; // 1 MiB
 
 /** Maximum number of script-checking threads allowed */
 static const int MAX_SCRIPTCHECK_THREADS = 16;
@@ -93,6 +127,12 @@ static const uint32_t UNCONNECTED_HEADERS_TIMEOUT = 120;
 /** Maximum number of INV's that can be send in one message */
 static const int MAX_INV_TO_SEND = 1000;
 
+/** The maximum number of free transactions (in KB) that can enter the mempool per minute.
+ *  For a 1MB block we allow 15KB of free transactions per 1 minute.
+ */
+static const uint32_t DEFAULT_LIMITFREERELAY = DEFAULT_BLOCK_MAX_SIZE * 0.000015;
+/** Subject free transactions to priority checking when entering the mempool */
+static const bool DEFAULT_RELAYPRIORITY = false;
 /** The number of MiB that we will wait for the block storage method to go over before pruning */
 static const uint64_t DEFAULT_PRUNE_INTERVAL = 100;
 
@@ -117,29 +157,46 @@ static const bool DEFAULT_REINDEX = false;
 static const bool DEFAULT_DISCOVER = true;
 static const bool DEFAULT_PRINTTOCONSOLE = false;
 
+// BU - Xtreme Thinblocks Auto Mempool Limiter - begin section
+/** The default value for -minrelaytxfee in sat/byte */
+static const double DEFAULT_MINLIMITERTXFEE = (double)DEFAULT_MIN_RELAY_TX_FEE / 1000;
+/** The default value for -maxrelaytxfee in sat/byte */
+static const double DEFAULT_MAXLIMITERTXFEE = (double)DEFAULT_MIN_RELAY_TX_FEE / 1000;
+/** The number of block heights to gradually choke spam transactions over */
+static const unsigned int MAX_BLOCK_SIZE_MULTIPLIER = 3;
+/** The minimum value possible for -limitfreerelay when rate limiting */
+static const unsigned int DEFAULT_MIN_LIMITFREERELAY = 1;
+// BU - Xtreme Thinblocks Auto Mempool Limiter - end section
+
 struct BlockHasher
 {
     size_t operator()(const uint256 &hash) const { return hash.GetCheapHash(); }
 };
 
+extern CTweak<bool> enableCanonicalTxOrder;
 extern CCriticalSection cs_main;
 extern CTxMemPool mempool;
 typedef boost::unordered_map<uint256, CBlockIndex *, BlockHasher> BlockMap;
 extern CSharedCriticalSection cs_mapBlockIndex;
 extern BlockMap mapBlockIndex;
 
+//add for diskcoin -->
+extern CSharedCriticalSection cs_pocfilter;
+extern CPocBloomFilter *pPocFilter;
+//<--
+
 extern uint64_t nLastBlockTx;
 extern uint64_t nLastBlockSize;
 extern CWaitableCriticalSection csBestBlock;
 extern CConditionVariable cvBlockChange;
-extern std::atomic<bool> fImporting;
-extern std::atomic<bool> fReindex;
+extern bool fImporting;
+extern bool fReindex;
 extern bool fTxIndex;
-extern bool fBlocksOnly;
 extern bool fIsBareMultisigStd;
 extern unsigned int nBytesPerSigOp;
 extern bool fCheckBlockIndex;
 extern bool fCheckpointsEnabled;
+extern int64_t nCoinCacheMaxSize;
 /** A fee rate smaller than this is considered zero fee (for relaying, mining and transaction creation) */
 extern CFeeRate minRelayTxFee;
 /** Absolute maximum transaction fee (in satoshis) used by wallet and mempool (rejects high fee in sendrawtransaction)
@@ -150,9 +207,6 @@ extern int64_t nMaxTipAge;
 
 /** Best header we've seen so far (used for getheaders queries' starting points). */
 extern std::atomic<CBlockIndex *> pindexBestHeader;
-
-/** Best Invalid header we've seen so far. */
-extern std::atomic<CBlockIndex *> pindexBestInvalid;
 
 /** Used to determine whether it is time to check the orphan pool for any txns that can be evicted. */
 extern int64_t nLastOrphanCheck;
@@ -258,7 +312,7 @@ bool TestLockPointValidity(const LockPoints *lp);
 // Checks that the provided block is consistent with the chainparam's checkpoints
 bool CheckAgainstCheckpoint(unsigned int height, const uint256 &hash, const CChainParams &chainparams);
 
-/** Store block on disk. If dbp is non-nullptr, the file is known to already reside on disk */
+/** Store block on disk. If dbp is non-NULL, the file is known to already reside on disk */
 bool AcceptBlock(CBlock &block, CValidationState &state, CBlockIndex **pindex, bool fRequested, CDiskBlockPos *dbp);
 
 /** Find the last common block between the parameter chain and a locator. */

@@ -1,6 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2017 The Bitcoin developers
-// Copyright (c) 2009-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -19,6 +18,7 @@
 #include "init.h"
 #include "noui.h"
 #include "rpc/server.h"
+#include "unlimited.h"
 #include "unlimited.h"
 #include "util.h"
 #include "utilstrencodings.h"
@@ -105,7 +105,7 @@ bool AppInit(int argc, char *argv[])
         }
         else
         {
-            strUsage += "\n" + _("Usage:") + "\n" + "  bitcoind [options]                     " +
+            strUsage += "\n" + _("Usage:") + "\n" + "  diskcoind [options]                     " +
                         strprintf(_("Start %s Daemon"), _(PACKAGE_NAME)) + "\n";
 
             strUsage += "\n" + allowedArgs.helpMessage();
@@ -115,6 +115,8 @@ bool AppInit(int argc, char *argv[])
         return true;
     }
 
+    //add for diskcoin -->
+    /*
     // bip135 begin
     // dump default deployment info and exit, if requested
     if (GetBoolArg("-dumpforks", false))
@@ -130,14 +132,17 @@ bool AppInit(int argc, char *argv[])
         return true;
     }
     // bip135 end
+    */
+    //<--
 
     try
     {
-        if (!fs::is_directory(GetDataDir(false)))
-        {
-            fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", mapArgs["-datadir"].c_str());
-            return false;
-        }
+        //modify for diskcoin -->
+        // if (!fs::is_directory(GetDataDir(false)))
+        // {
+        //     fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", mapArgs["-datadir"].c_str());
+        //     return false;
+        // }
         try
         {
             ReadConfigFile(mapArgs, mapMultiArgs, allowedArgs);
@@ -147,6 +152,12 @@ bool AppInit(int argc, char *argv[])
             fprintf(stderr, "Error reading configuration file: %s\n", e.what());
             return false;
         }
+        if (!fs::is_directory(GetDataDir(false)))
+        {
+            fprintf(stderr, "Error: Specified data directory \"%s\" does not exist.\n", mapArgs["-datadir"].c_str());
+            return false;
+        }
+        //<--
         // Check for -testnet or -regtest parameter (Params() calls are only valid after this clause)
         try
         {
@@ -172,7 +183,7 @@ bool AppInit(int argc, char *argv[])
 
         if (fCommandLine)
         {
-            fprintf(stderr, "Error: There is no RPC client functionality in bitcoind anymore. Use the bitcoin-cli "
+            fprintf(stderr, "Error: There is no RPC client functionality in diskcoind anymore. Use the diskcoin-cli "
                             "utility instead.\n");
             return false;
         }
@@ -180,7 +191,7 @@ bool AppInit(int argc, char *argv[])
         fDaemon = GetBoolArg("-daemon", false);
         if (fDaemon)
         {
-            fprintf(stdout, "Bitcoin server starting\n");
+            fprintf(stdout, "Diskcoin server starting\n");
 
             // Daemonize
             pid_t pid = fork();
@@ -257,7 +268,7 @@ bool AppInit(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "AppInit()");
+        PrintExceptionContinue(NULL, "AppInit()");
     }
 
     if (!fRet)
@@ -277,10 +288,14 @@ bool AppInit(int argc, char *argv[])
 }
 
 int main(int argc, char *argv[])
-{
+{    
+    //add for diskcoin -->
+    g_argv = argv;
+    g_argc = argc;
+    //<--
     SetupEnvironment();
 
-    // Connect bitcoind signal handlers
+    // Connect diskcoind signal handlers
     noui_connect();
 
     return (AppInit(argc, argv) ? EXIT_SUCCESS : EXIT_FAILURE);

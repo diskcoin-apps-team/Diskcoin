@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -34,6 +34,10 @@ class uint256;
 QT_BEGIN_NAMESPACE
 class QTimer;
 QT_END_NAMESPACE
+
+extern UniValue staketo(const UniValue &params, bool fHelp);
+extern UniValue ValueFromAmount(const CAmount &amount);
+extern UniValue unstake(const UniValue &params, bool fHelp);
 
 class SendCoinsRecipient
 {
@@ -155,12 +159,18 @@ public:
     TransactionTableModel *getTransactionTableModel();
     RecentRequestsTableModel *getRecentRequestsTableModel();
 
-    CAmount getBalance(const CCoinControl *coinControl = nullptr) const;
+    CAmount getBalance(const CCoinControl *coinControl = NULL) const;
     CAmount getUnconfirmedBalance() const;
+    CAmount getStakeinBalance() const;
+    CAmount getStaketoBalance() const;
+    CAmount getUnstakingBalance() const;
     CAmount getImmatureBalance() const;
     bool haveWatchOnly() const;
     CAmount getWatchBalance() const;
     CAmount getWatchUnconfirmedBalance() const;
+    CAmount getWatchStakeBalance() const;
+    CAmount getWatchStaketoBalance() const;
+    CAmount getWatchUnstakingBalance() const;
     CAmount getWatchImmatureBalance() const;
     EncryptionStatus getEncryptionStatus() const;
 
@@ -175,10 +185,16 @@ public:
     };
 
     // prepare transaction for getting txfee before sending coins
-    SendCoinsReturn prepareTransaction(WalletModelTransaction &transaction, const CCoinControl *coinControl = nullptr);
+    SendCoinsReturn prepareTransaction(WalletModelTransaction &transaction, const CCoinControl *coinControl = NULL);
 
     // Send coins to a list of recipients
     SendCoinsReturn sendCoins(WalletModelTransaction &transaction);
+
+    //add for diskcoin
+    SendCoinsReturn stakeCoins(WalletModelTransaction &transaction);
+
+    //add for diskcoin
+    void unstakeCoins(std::string txid);
 
     // Wallet encryption
     bool setWalletEncrypted(bool encrypted, const SecureString &passphrase);
@@ -246,9 +262,15 @@ private:
     // Cache some values to be able to detect changes
     CAmount cachedBalance;
     CAmount cachedUnconfirmedBalance;
+    CAmount cachedStakeBalance;
+    CAmount cachedStaketoBalance;
+    CAmount cachedUnstakingBalance;
     CAmount cachedImmatureBalance;
     CAmount cachedWatchOnlyBalance;
     CAmount cachedWatchUnconfBalance;
+    CAmount cachedWatchStakeBalance;
+    CAmount cachedwatchStaketoBalance;
+    CAmount cachedwatchUnstakingBalance;
     CAmount cachedWatchImmatureBalance;
     EncryptionStatus cachedEncryptionStatus;
     int cachedNumBlocks;
@@ -263,9 +285,15 @@ Q_SIGNALS:
     // Signal that balance in wallet changed
     void balanceChanged(const CAmount &balance,
         const CAmount &unconfirmedBalance,
+        const CAmount &stakeBalance,
+        const CAmount &staketoBalance,
+        const CAmount &unstakingBalance,
         const CAmount &immatureBalance,
         const CAmount &watchOnlyBalance,
         const CAmount &watchUnconfBalance,
+        const CAmount &watchStakeBalance,
+        const CAmount &watchStaketoBalance,
+        const CAmount &watchUnstakingBalance,
         const CAmount &watchImmatureBalance);
 
     // Encryption status of wallet changed

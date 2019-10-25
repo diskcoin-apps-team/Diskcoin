@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -54,8 +54,8 @@ class CState
 {
 protected:
     /** Map maintaining per-node state. */
-    CCriticalSection cs_cstate;
-    std::map<NodeId, CNodeState> mapNodeState GUARDED_BY(cs_cstate);
+    CCriticalSection cs;
+    std::map<NodeId, CNodeState> mapNodeState GUARDED_BY(cs);
     friend class CNodeStateAccessor;
 
 public:
@@ -74,25 +74,22 @@ public:
     /** Is mapNodestate empty */
     bool Empty()
     {
-        LOCK(cs_cstate);
+        LOCK(cs);
         return mapNodeState.empty();
     }
 };
 
 class CNodeStateAccessor
 {
-    CCriticalSection *cs_ns_accessor;
+    CCriticalSection *cs;
     CNodeState *obj;
 
 public:
-    CNodeStateAccessor(CCriticalSection *_cs, CNodeState *_obj) : cs_ns_accessor(_cs), obj(_obj)
-    {
-        cs_ns_accessor->lock();
-    }
+    CNodeStateAccessor(CCriticalSection *_cs, CNodeState *_obj) : cs(_cs), obj(_obj) { cs->lock(); }
     CNodeStateAccessor(CState &ns, const NodeId id)
     {
-        cs_ns_accessor = &ns.cs_cstate;
-        cs_ns_accessor->lock();
+        cs = &ns.cs;
+        cs->lock();
         obj = ns._GetNodeState(id);
     }
 
@@ -103,7 +100,7 @@ public:
     ~CNodeStateAccessor()
     {
         obj = nullptr;
-        cs_ns_accessor->unlock();
+        cs->unlock();
     }
 };
 

@@ -79,10 +79,14 @@ class NotifyTest(BitcoinTestFramework):
         self.is_network_split = False
 
         # check files not created after startup
-        waitFor(10, lambda: os.path.isfile(self.touch_filename1) == False)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename2) == False)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename3) == False)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename4) == False)
+        if os.path.isfile(self.touch_filename1):
+            raise AssertionError(self.touch_filename1 + "exists")
+        if os.path.isfile(self.touch_filename2):
+            raise AssertionError(self.touch_filename2 + "exists")
+        if os.path.isfile(self.touch_filename3):
+            raise AssertionError(self.touch_filename3 + "exists")
+        if os.path.isfile(self.touch_filename4):
+            raise AssertionError(self.touch_filename4 + "exists")
 
         # mine a block. Both nodes should have created a file: newfile1 and newfile3.
         self.nodes[1].generate(1)
@@ -90,37 +94,21 @@ class NotifyTest(BitcoinTestFramework):
         time.sleep(1)
 
         # check blocknotify - both nodes should have run the blocknotify command.
-        waitFor(10, lambda: os.path.isfile(self.touch_filename1) == True)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename3) == True)
-        os.remove(self.touch_filename1)
-        os.remove(self.touch_filename3)
+        if not os.path.isfile(self.touch_filename1):
+            raise AssertionError(self.touch_filename1 + "does not exist")
+        if not os.path.isfile(self.touch_filename3):
+            raise AssertionError(self.touch_filename3 + "does not exist")
 
-        # walletnotify will have been run on node1 because we just mined a block there and so
-        # have coins in the wallet that were just added.
-        waitFor(10, lambda: os.path.isfile(self.touch_filename4) == True)
-        os.remove(self.touch_filename4)
-
-        # check walletnotify - send a transaction from node1 to itself. Only node1 should have run
+        # check walletnotify - send a transaction from node1 to node0. Only node1 should have run
         # the walletnotify command.
         self.nodes[1].generate(100)
         self.sync_all()
-        address = self.nodes[1].getnewaddress("test1")
+        address = self.nodes[0].getnewaddress("test")
         txid = self.nodes[1].sendtoaddress(address, 1, "", "", True)
-        sync_mempools(self.nodes)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename2) == False)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename4) == True)
-        os.remove(self.touch_filename4)
-
-        # check walletnotify - send a transaction from node1 to node0. Both nodes should have run
-        # the walletnotify command.
-        address2 = self.nodes[0].getnewaddress("test2")
-        txid = self.nodes[1].sendtoaddress(address2, 1, "", "", True)
-        sync_mempools(self.nodes)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename2) == True)
-        waitFor(10, lambda: os.path.isfile(self.touch_filename4) == True)
-        os.remove(self.touch_filename2)
-        os.remove(self.touch_filename4)
-
+        if os.path.isfile(self.touch_filename2):
+            raise AssertionError(self.touch_filename2 + "exists")
+        if not os.path.isfile(self.touch_filename4):
+            raise AssertionError(self.touch_filename4 + "does not exist")
 
 if __name__ == '__main__':
     NotifyTest().main()

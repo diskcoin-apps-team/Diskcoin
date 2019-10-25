@@ -46,7 +46,7 @@ if sourcePath != outOfSourceBuildPath:
     sys.path.append(outOfSourceBuildPath)
 
 from tests_config import *
-from test_classes import RpcTest, Disabled, Skip, WhenElectrumFound
+from test_classes import RpcTest, Disabled, Skip
 
 BOLD = ("","")
 if os.name == 'posix':
@@ -180,11 +180,9 @@ if ENABLE_ZMQ:
 
 #Tests
 testScripts = [ RpcTest(t) for t in [
-    'txindex',
-    'mempool_push',
     Disabled('schnorr-activation', 'Need to be updated to work with BU'),
     'schnorrsig',
-    'segwit_recovery',
+    Disabled('segwit-recovery-activation','Need to be updated to work with BU'),
     'bip135basic',
     'ctor',
     'mining_ctor',
@@ -201,7 +199,7 @@ testScripts = [ RpcTest(t) for t in [
     'wallet',
     'wallet-hd',
     'wallet-dump',
-    Disabled('excessive', "Reduce Travis execution time"),
+    'excessive',
     Disabled('uahf', 'temporary disable while waiting, to use as a template for future tests'),
     'listtransactions',
     'receivedby',
@@ -216,8 +214,6 @@ testScripts = [ RpcTest(t) for t in [
     'mempool_reorg',
     'mempool_limit',
     'mempool_persist',
-    'mempool_validate',
-    'mempoolsync',
     'httpbasics',
     'multi_rpc',
     'zapwallettxes',
@@ -237,7 +233,7 @@ testScripts = [ RpcTest(t) for t in [
     Disabled('invalidblockrequest', "TODO"),
     'invalidtxrequest',
     'abandonconflict',
-    Disabled('p2p-versionbits-warning', "Need to resolve issue with false positive warnings on mainnet"),
+    'p2p-versionbits-warning',
     'importprunedfunds',
     'compactblocks_1',
     'compactblocks_2',
@@ -249,13 +245,7 @@ testScripts = [ RpcTest(t) for t in [
     'sighashmatch',
     'getlogcategories',
     'getrawtransaction',
-    WhenElectrumFound('electrum_basics'),
-    WhenElectrumFound('electrum_reorg'),
-    WhenElectrumFound('electrum_shutdownonerror'),
-    'rpc_getblockstats',
-    WhenElectrumFound('electrum_cashaccount'),
-    'minimaldata-activation',
-    'schnorrmultisig-activation'
+    Disabled('electrum_basics', "Needs to be skipped if electrs is not built")
 ] ]
 
 testScriptsExt = [ RpcTest(t) for t in [
@@ -267,7 +257,7 @@ testScriptsExt = [ RpcTest(t) for t in [
     'excessive --extensive',
     'parallel --extensive',
     'bip65-cltv',
-    'bip68_sequence',
+    'bip68-sequence',
     Disabled('bipdersig-p2p', "keep as an example of testing fork activation"),
     'bipdersig',
     'bip135-grace',
@@ -398,10 +388,6 @@ def runtests():
                 else:
                     trimmed_tests_to_run.append(t)
             tests_to_run = trimmed_tests_to_run
-
-        # if all specified tests are disabled just quit
-        if len(tests_to_run) == 0:
-            quit()
 
         if len(tests_to_run) > 1 and run_parallel:
             # Populate cache

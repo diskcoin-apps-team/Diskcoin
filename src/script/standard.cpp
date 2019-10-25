@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -41,7 +41,7 @@ const char *GetTxnOutputType(txnouttype t)
     case TX_LABELPUBLIC:
         return "publiclabel";
     }
-    return nullptr;
+    return NULL;
 }
 
 /**
@@ -55,7 +55,7 @@ bool Solver(const CScript &scriptPubKey, txnouttype &typeRet, vector<vector<unsi
         // Standard tx, sender provides pubkey, receiver adds signature
         {TX_PUBKEY, CScript() << OP_PUBKEY << OP_CHECKSIG},
 
-        // Bitcoin address tx, sender provides hash of pubkey, receiver provides signature and pubkey
+        // Diskcoin address tx, sender provides hash of pubkey, receiver provides signature and pubkey
         {TX_PUBKEYHASH, CScript() << OP_DUP << OP_HASH160 << OP_PUBKEYHASH << OP_EQUALVERIFY << OP_CHECKSIG},
 
         // Sender provides N pubkeys, receivers provides M signatures
@@ -120,7 +120,7 @@ bool Solver(const CScript &scriptPubKey, txnouttype &typeRet, vector<vector<unsi
             // Template matching opcodes:
             if (opcode2 == OP_PUBKEYS)
             {
-                while (CPubKey::ValidSize(vch1))
+                while (vch1.size() >= 33 && vch1.size() <= 65)
                 {
                     vSolutionsRet.push_back(vch1);
                     if (!script1.GetOp(pc1, opcode1, vch1))
@@ -134,7 +134,7 @@ bool Solver(const CScript &scriptPubKey, txnouttype &typeRet, vector<vector<unsi
 
             if (opcode2 == OP_PUBKEY)
             {
-                if (!CPubKey::ValidSize(vch1))
+                if (vch1.size() < 33 || vch1.size() > 65)
                     break;
                 vSolutionsRet.push_back(vch1);
             }
@@ -366,3 +366,15 @@ CScript GetScriptLabelPublic(const string &labelPublic)
 }
 
 bool IsValidDestination(const CTxDestination &dest) { return dest.which() != 0; }
+
+//add for diskcoin -->
+#include <dstencode.h>
+std::string EncodeScriptPubKey (const CScript &scriptPubKey) {
+    CTxDestination address;
+    if (ExtractDestination(scriptPubKey, address))
+    {
+        return EncodeDestination(address);
+    }
+    return "";
+}
+//<--

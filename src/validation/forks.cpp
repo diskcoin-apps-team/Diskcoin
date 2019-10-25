@@ -96,7 +96,8 @@ bool IsNov2018Activated(const Consensus::Params &consensusparams, const CBlockIn
     return IsNov2018Activated(consensusparams, pindexTip->nHeight);
 }
 
-bool IsNov2019Enabled(const Consensus::Params &consensusparams, const CBlockIndex *pindexTip)
+bool AreWeOnBCHChain() { return (miningForkTime.Value() != 0); }
+bool IsMay2019Enabled(const Consensus::Params &consensusparams, const CBlockIndex *pindexTip)
 {
     if (pindexTip == nullptr)
     {
@@ -105,11 +106,28 @@ bool IsNov2019Enabled(const Consensus::Params &consensusparams, const CBlockInde
     return pindexTip->IsforkActiveOnNextBlock(miningForkTime.Value());
 }
 
-bool IsNov2019Next(const Consensus::Params &consensusparams, const CBlockIndex *pindexTip)
+bool IsMay2019Next(const Consensus::Params &consensusparams, const CBlockIndex *pindexTip)
 {
     if (pindexTip == nullptr)
     {
         return false;
     }
     return pindexTip->forkAtNextBlock(miningForkTime.Value());
+}
+
+//* SV helpers/
+
+bool AreWeOnSVChain() { return miningSvForkTime.Value() != 0; }
+bool IsSv2018Activated(const Consensus::Params &consensusparams, const int32_t nHeight)
+{
+    return nHeight >= consensusparams.sv2018Height;
+}
+
+bool IsSv2018Activated(const Consensus::Params &consensusparams, const CBlockIndex *pindexTip)
+{
+    if (pindexTip == nullptr)
+    {
+        return false;
+    }
+    return IsSv2018Activated(consensusparams, pindexTip->nHeight);
 }

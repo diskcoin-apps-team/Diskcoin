@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -55,6 +55,7 @@ SendCoinsDialog::SendCoinsDialog(const PlatformStyle *_platformStyle, QWidget *p
     connect(ui->clearButton, SIGNAL(clicked()), this, SLOT(clear()));
 
     // Coin Control
+    connect(ui->typeOp, SIGNAL(activated(int)), this, SLOT(chooseSendType(int)));
     connect(ui->pushButtonCoinControl, SIGNAL(clicked()), this, SLOT(coinControlButtonClicked()));
     connect(ui->checkBoxCoinControlChange, SIGNAL(stateChanged(int)), this, SLOT(coinControlChangeChecked(int)));
     connect(ui->lineEditCoinControlChange, SIGNAL(textEdited(const QString &)), this,
@@ -124,6 +125,41 @@ SendCoinsDialog::SendCoinsDialog(const PlatformStyle *_platformStyle, QWidget *p
     minimizeFeeSection(settings.value("fFeeSectionMinimized").toBool());
 }
 
+void SendCoinsDialog::chooseSendType(int idx)
+{
+    SendCoinsEntry *entry = 0;
+    clear();
+
+    if (ui->entries->count() == 1)
+    {
+        entry = qobject_cast<SendCoinsEntry *>(ui->entries->itemAt(0)->widget());
+    }
+    if (!entry)
+    {
+        entry = addEntry();
+    }
+
+    if (0 == idx)
+    {
+        entry->setSendLable("Pay to");
+        ui->clearButton->setVisible(true);
+        ui->addButton->setVisible(true);
+    }
+    else if (1 == idx)
+    {
+        entry->setSendLable("Stake to");
+        ui->clearButton->setVisible(false);
+        ui->addButton->setVisible(false);
+    }
+    else
+    {
+        entry->setSendLable("Pay to");
+        ui->clearButton->setVisible(true);
+        ui->addButton->setVisible(true);
+    }
+
+}
+
 void SendCoinsDialog::setClientModel(ClientModel *_clientModel)
 {
     this->clientModel = _clientModel;
@@ -149,10 +185,15 @@ void SendCoinsDialog::setModel(WalletModel *_model)
             }
         }
 
-        setBalance(_model->getBalance(), _model->getUnconfirmedBalance(), _model->getImmatureBalance(),
-            _model->getWatchBalance(), _model->getWatchUnconfirmedBalance(), _model->getWatchImmatureBalance());
-        connect(_model, SIGNAL(balanceChanged(CAmount, CAmount, CAmount, CAmount, CAmount, CAmount)), this,
-            SLOT(setBalance(CAmount, CAmount, CAmount, CAmount, CAmount, CAmount)));
+        setBalance(_model->getBalance(), 0, 0, 0, 0, 
+            0, 0, 0, 0, 0, 
+            0, 0);
+        connect(_model, SIGNAL(balanceChanged(CAmount, CAmount, CAmount, CAmount, CAmount, 
+            CAmount, CAmount, CAmount, CAmount, CAmount, 
+            CAmount, CAmount)), this,
+            SLOT(setBalance(CAmount, CAmount, CAmount, CAmount, CAmount, 
+                CAmount, CAmount, CAmount, CAmount, CAmount, 
+                CAmount, CAmount)));
         connect(_model->getOptionsModel(), SIGNAL(displayUnitChanged(int)), this, SLOT(updateDisplayUnit()));
         updateDisplayUnit();
 
@@ -330,7 +371,19 @@ void SendCoinsDialog::on_sendButton_clicked()
         formatted.append(recipientElement);
     }
 
-    QString questionString = tr("Are you sure you want to send?");
+    QString questionString = tr("");
+    QString confirmString = tr("");
+    if (0 == ui->typeOp->currentIndex())
+    {
+        questionString = tr("Are you sure you want to send?");
+        confirmString = tr("Confirm send coins");
+    }
+    else if (1 == ui->typeOp->currentIndex())
+    {
+        questionString = tr("Are you sure you want to stake?");
+        confirmString = tr("Confirm stake coins");
+    }
+
     questionString.append("<br /><br />%1");
 
     if (txFee > 0)
@@ -360,7 +413,9 @@ void SendCoinsDialog::on_sendButton_clicked()
     questionString.append(QString("<span style='font-size:10pt;font-weight:normal;'><br />(=%2)</span>")
                               .arg(alternativeUnits.join(" " + tr("or") + "<br />")));
 
-    QMessageBox::StandardButton retval = QMessageBox::question(this, tr("Confirm send coins"),
+
+
+    QMessageBox::StandardButton retval = QMessageBox::question(this, confirmString,
         questionString.arg(formatted.join("<br />")), QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
 
     if (retval != QMessageBox::Yes)
@@ -370,7 +425,16 @@ void SendCoinsDialog::on_sendButton_clicked()
     }
 
     // now send the prepared transaction
-    WalletModel::SendCoinsReturn sendStatus = model->sendCoins(currentTransaction);
+    WalletModel::SendCoinsReturn sendStatus;
+    if (0 == ui->typeOp->currentIndex())
+    {
+        sendStatus = model->sendCoins(currentTransaction);
+    }
+    else if (1 == ui->typeOp->currentIndex())
+    {
+        sendStatus = model->stakeCoins(currentTransaction);
+    }
+
     // process sendStatus and on error generate message shown to user
     processSendCoinsReturn(sendStatus);
 
@@ -507,16 +571,28 @@ bool SendCoinsDialog::handlePaymentRequest(const SendCoinsRecipient &rv)
 }
 
 void SendCoinsDialog::setBalance(const CAmount &balance,
-    const CAmount &unconfirmedBalance,
-    const CAmount &immatureBalance,
-    const CAmount &watchBalance,
-    const CAmount &watchUnconfirmedBalance,
-    const CAmount &watchImmatureBalance)
+        const CAmount &unconfirmedBalance,
+        const CAmount &StakeBalance,
+        const CAmount &staketoBalance,
+        const CAmount &unstakingBalance,
+        const CAmount &immatureBalance,
+        const CAmount &watchOnlyBalance,
+        const CAmount &watchUnconfBalance,
+        const CAmount &watchStakeBalance,
+        const CAmount &watchStaketoBalance,
+        const CAmount &watchUnstakingBalance,
+        const CAmount &watchImmatureBalance)
 {
     Q_UNUSED(unconfirmedBalance);
+    Q_UNUSED(StakeBalance);
+    Q_UNUSED(staketoBalance);
+    Q_UNUSED(unstakingBalance);
     Q_UNUSED(immatureBalance);
-    Q_UNUSED(watchBalance);
-    Q_UNUSED(watchUnconfirmedBalance);
+    Q_UNUSED(watchOnlyBalance);
+    Q_UNUSED(watchUnconfBalance);
+    Q_UNUSED(watchStakeBalance);
+    Q_UNUSED(watchStaketoBalance);
+    Q_UNUSED(watchUnstakingBalance);
     Q_UNUSED(watchImmatureBalance);
 
     if (model && model->getOptionsModel())
@@ -527,7 +603,9 @@ void SendCoinsDialog::setBalance(const CAmount &balance,
 
 void SendCoinsDialog::updateDisplayUnit()
 {
-    setBalance(model->getBalance(), 0, 0, 0, 0, 0);
+    setBalance(model->getBalance(), 0, 0, 0, 0, 
+        0, 0, 0, 0, 0,
+        0, 0);
     ui->customFee->setDisplayUnit(model->getOptionsModel()->getDisplayUnit());
     updateMinFeeLabel();
     updateSmartFeeLabel();
@@ -803,7 +881,7 @@ void SendCoinsDialog::coinControlChangeEdited(const QString &text)
         else if (!IsValidDestination(dest))
         {
             // Invalid address
-            ui->labelCoinControlChangeLabel->setText(tr("Warning: Invalid Bitcoin address"));
+            ui->labelCoinControlChangeLabel->setText(tr("Warning: Invalid Diskcoin address"));
         }
         else
         {

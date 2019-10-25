@@ -1,5 +1,5 @@
 // Copyright (c) 2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -65,7 +65,7 @@ class WorkQueue
 {
 private:
     /** Mutex protects entire object */
-    std::mutex cs_workQueue;
+    std::mutex cs;
     std::condition_variable cond;
     std::deque<std::unique_ptr<WorkItem> > queue;
     bool running;
@@ -79,12 +79,12 @@ private:
         WorkQueue &wq;
         ThreadCounter(WorkQueue &w) : wq(w)
         {
-            std::lock_guard<std::mutex> lock(wq.cs_workQueue);
+            std::lock_guard<std::mutex> lock(wq.cs);
             wq.numThreads += 1;
         }
         ~ThreadCounter()
         {
-            std::lock_guard<std::mutex> lock(wq.cs_workQueue);
+            std::lock_guard<std::mutex> lock(wq.cs);
             wq.numThreads -= 1;
             wq.cond.notify_all();
         }
@@ -98,7 +98,7 @@ public:
     /** Enqueue a work item */
     bool Enqueue(WorkItem *item)
     {
-        std::unique_lock<std::mutex> lock(cs_workQueue);
+        std::unique_lock<std::mutex> lock(cs);
         if (queue.size() >= maxDepth)
         {
             return false;
@@ -115,7 +115,7 @@ public:
         {
             std::unique_ptr<WorkItem> i;
             {
-                std::unique_lock<std::mutex> lock(cs_workQueue);
+                std::unique_lock<std::mutex> lock(cs);
                 while (running && queue.empty())
                     cond.wait(lock);
                 if (!running)
@@ -129,7 +129,7 @@ public:
     /** Interrupt and exit loops */
     void Interrupt()
     {
-        std::unique_lock<std::mutex> lock(cs_workQueue);
+        std::unique_lock<std::mutex> lock(cs);
         running = false;
         cond.notify_all();
     }
@@ -304,7 +304,7 @@ static void http_request_cb(struct evhttp_request *req, void *arg)
 static void http_reject_request_cb(struct evhttp_request *req, void *)
 {
     LOG(HTTP, "Rejecting request while shutting down\n");
-    evhttp_send_error(req, HTTP_SERVUNAVAIL, nullptr);
+    evhttp_send_error(req, HTTP_SERVUNAVAIL, NULL);
 }
 
 /** Event dispatcher thread */
@@ -357,7 +357,7 @@ static bool HTTPBindAddresses(struct evhttp *http)
     {
         LOG(HTTP, "Binding RPC on address %s port %i\n", i->first, i->second);
         evhttp_bound_socket *bind_handle =
-            evhttp_bind_socket_with_handle(http, i->first.empty() ? nullptr : i->first.c_str(), i->second);
+            evhttp_bind_socket_with_handle(http, i->first.empty() ? NULL : i->first.c_str(), i->second);
         if (bind_handle)
         {
             boundSockets.push_back(bind_handle);
@@ -453,7 +453,7 @@ bool InitHTTPServer()
     evhttp_set_timeout(http, GetArg("-rpcservertimeout", DEFAULT_HTTP_SERVER_TIMEOUT));
     evhttp_set_max_headers_size(http, MAX_HEADERS_SIZE);
     evhttp_set_max_body_size(http, MAX_SIZE);
-    evhttp_set_gencb(http, http_request_cb, nullptr);
+    evhttp_set_gencb(http, http_request_cb, NULL);
 
     if (!HTTPBindAddresses(http))
     {
@@ -504,7 +504,7 @@ void InterruptHTTPServer()
             evhttp_del_accept_socket(eventHTTP, socket);
         }
         // Reject requests on current connections
-        evhttp_set_gencb(eventHTTP, http_reject_request_cb, nullptr);
+        evhttp_set_gencb(eventHTTP, http_reject_request_cb, NULL);
     }
     if (workQueue)
         workQueue->Interrupt();
@@ -522,7 +522,6 @@ void StopHTTPServer()
         }
         g_thread_http_workers.clear();
         delete workQueue;
-        workQueue = nullptr;
     }
     if (eventBase)
     {
@@ -619,7 +618,7 @@ std::string HTTPRequest::ReadBody()
      * abstraction to consume the evbuffer on the fly in the parsing algorithm.
      */
     const char *data = (const char *)evbuffer_pullup(buf, size);
-    if (!data) // returns nullptr in case of empty buffer
+    if (!data) // returns NULL in case of empty buffer
         return "";
     std::string rv(data, size);
     evbuffer_drain(buf, size);

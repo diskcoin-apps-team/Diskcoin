@@ -26,7 +26,7 @@
 
 /**
  * Encode a byte sequence as a base58-encoded string.
- * pbegin and pend cannot be nullptr, unless both are.
+ * pbegin and pend cannot be NULL, unless both are.
  */
 std::string EncodeBase58(const unsigned char *pbegin, const unsigned char *pend);
 
@@ -38,7 +38,7 @@ std::string EncodeBase58(const std::vector<unsigned char> &vch);
 /**
  * Decode a base58-encoded string (psz) into a byte vector (vchRet).
  * return true if decoding is successful.
- * psz cannot be nullptr.
+ * psz cannot be NULL.
  */
 bool DecodeBase58(const char *psz, std::vector<unsigned char> &vchRet);
 
@@ -147,10 +147,10 @@ public:
 typedef CBitcoinExtKeyBase<CExtKey, 74, CChainParams::EXT_SECRET_KEY> CBitcoinExtKey;
 typedef CBitcoinExtKeyBase<CExtPubKey, 74, CChainParams::EXT_PUBLIC_KEY> CBitcoinExtPubKey;
 
-/// Encode an old-style bitcoin address
+/// Encode an old-style diskcoin address
 std::string EncodeLegacyAddr(const CTxDestination &dest, const CChainParams &);
 
-/// Decode an old-style bitcoin address
+/// Decode an old-style diskcoin address
 CTxDestination DecodeLegacyAddr(const std::string &str, const CChainParams &);
 
 /// Encode a bitpay address

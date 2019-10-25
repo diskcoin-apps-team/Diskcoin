@@ -1,6 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2018 The Bitcoin SV developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -25,6 +26,8 @@ static const unsigned int MAX_SCRIPT_ELEMENT_SIZE = 520;
 
 // Maximum number of non-push operations per script
 static const int MAX_OPS_PER_SCRIPT = 201;
+static const int SV_MAX_OPS_PER_SCRIPT = 500;
+
 
 // Maximum number of public keys per multisig
 static const int MAX_PUBKEYS_PER_MULTISIG = 20;
@@ -202,12 +205,6 @@ enum opcodetype
 
 const char *GetOpName(opcodetype opcode);
 
-/**
- * Check whether the given stack element data would be minimally pushed using
- * the given opcode.
- */
-bool CheckMinimalPush(const std::vector<uint8_t> &data, opcodetype opcode);
-
 class scriptnum_error : public std::runtime_error
 {
 public:
@@ -374,15 +371,6 @@ private:
     int64_t m_value;
 };
 
-/** wrapper class that serializes in an older way that is incompatible with current rules, but is used by the genesis
-block */
-class LegacyCScriptNum : public CScriptNum
-{
-public:
-    explicit LegacyCScriptNum(const int64_t &n) : CScriptNum(n) {}
-};
-
-
 /**
  * We use a prevector for the script to reduce the considerable memory overhead
  *  of vectors in cases where they normally contain a small number of small elements.
@@ -423,7 +411,6 @@ public:
     CScript(const unsigned char *pbegin, const unsigned char *pend) : CScriptBase(pbegin, pend) {}
     CScript &operator+=(const CScript &b)
     {
-        reserve(size() + b.size());
         insert(end(), b.begin(), b.end());
         return *this;
     }
@@ -454,55 +441,9 @@ public:
         return *this;
     }
 
-    CScript &operator<<(const LegacyCScriptNum &a)
-    {
-        auto b = a.getvch();
-
-        if (b.size() < OP_PUSHDATA1)
-        {
-            insert(end(), (unsigned char)b.size());
-        }
-        else if (b.size() <= 0xff)
-        {
-            insert(end(), OP_PUSHDATA1);
-            insert(end(), (unsigned char)b.size());
-        }
-        else if (b.size() <= 0xffff)
-        {
-            insert(end(), OP_PUSHDATA2);
-            uint8_t data[2];
-            WriteLE16(data, b.size());
-            insert(end(), data, data + sizeof(data));
-        }
-        else
-        {
-            insert(end(), OP_PUSHDATA4);
-            uint8_t data[4];
-            WriteLE32(data, b.size());
-            insert(end(), data, data + sizeof(data));
-        }
-        insert(end(), b.begin(), b.end());
-        return *this;
-    }
-
     CScript &operator<<(const std::vector<unsigned char> &b)
     {
-        if (b.size() == 0)
-        {
-            insert(end(), OP_0);
-            return *this;
-        }
-        if ((b.size() == 1) && (b[0] >= 1 && b[0] <= 16))
-        {
-            insert(end(), OP_1 - 1 + b[0]);
-            return *this;
-        }
-        else if ((b.size() == 1) && (b[0] == 0x81))
-        {
-            insert(end(), OP_1NEGATE);
-            return *this;
-        }
-        else if (b.size() < OP_PUSHDATA1)
+        if (b.size() < OP_PUSHDATA1)
         {
             insert(end(), (unsigned char)b.size());
         }
@@ -541,7 +482,7 @@ public:
     bool GetOp(iterator &pc, opcodetype &opcodeRet)
     {
         const_iterator pc2 = pc;
-        bool fRet = GetOp2(pc2, opcodeRet, nullptr);
+        bool fRet = GetOp2(pc2, opcodeRet, NULL);
         pc = begin() + (pc2 - begin());
         return fRet;
     }
@@ -551,7 +492,7 @@ public:
         return GetOp2(pc, opcodeRet, &vchRet);
     }
 
-    bool GetOp(const_iterator &pc, opcodetype &opcodeRet) const { return GetOp2(pc, opcodeRet, nullptr); }
+    bool GetOp(const_iterator &pc, opcodetype &opcodeRet) const { return GetOp2(pc, opcodeRet, NULL); }
     bool GetOp2(const_iterator &pc, opcodetype &opcodeRet, std::vector<unsigned char> *pvchRet) const
     {
         opcodeRet = OP_INVALIDOPCODE;

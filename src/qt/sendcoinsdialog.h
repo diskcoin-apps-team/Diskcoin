@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -53,13 +53,20 @@ public Q_SLOTS:
     void clear();
     void reject();
     void accept();
+    void chooseSendType(int idx);
     SendCoinsEntry *addEntry();
     void updateTabsAndLabels();
     void setBalance(const CAmount &balance,
         const CAmount &unconfirmedBalance,
+        const CAmount &StakeBalance,
+        const CAmount &staketoBalance,
+        const CAmount &unstakingBalance,
         const CAmount &immatureBalance,
         const CAmount &watchOnlyBalance,
         const CAmount &watchUnconfBalance,
+        const CAmount &watchStakeBalance,
+        const CAmount &watchStaketoBalance,
+        const CAmount &watchUnstakingBalance,
         const CAmount &watchImmatureBalance);
 
 private:

@@ -1,6 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -42,20 +41,11 @@ static const unsigned int DEFAULT_DUST_THRESHOLD = 546;
  * with. However scripts violating these flags may still be present in valid
  * blocks and we must accept those blocks.
  */
-
-/* clang-format off */
-static const unsigned int STANDARD_SCRIPT_VERIFY_FLAGS = MANDATORY_SCRIPT_VERIFY_FLAGS |
-                                                         SCRIPT_VERIFY_DERSIG |
-                                                         SCRIPT_VERIFY_MINIMALDATA |
-                                                         SCRIPT_VERIFY_NULLDUMMY |
-                                                         SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS |
-                                                         SCRIPT_VERIFY_CLEANSTACK |
-                                                         SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY |
-                                                         SCRIPT_VERIFY_CHECKSEQUENCEVERIFY |
-                                                         SCRIPT_VERIFY_SIGPUSHONLY |
-                                                         SCRIPT_ENABLE_CHECKDATASIG |
-                                                         SCRIPT_DISALLOW_SEGWIT_RECOVERY;
-/* clang-format on */
+static const unsigned int STANDARD_SCRIPT_VERIFY_FLAGS =
+    MANDATORY_SCRIPT_VERIFY_FLAGS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_STRICTENC | SCRIPT_VERIFY_MINIMALDATA |
+    SCRIPT_VERIFY_NULLDUMMY | SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS | SCRIPT_VERIFY_CLEANSTACK |
+    SCRIPT_VERIFY_NULLFAIL | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY |
+    SCRIPT_VERIFY_LOW_S;
 
 /** For convenience, standard but not mandatory verify flags. */
 static const unsigned int STANDARD_NOT_MANDATORY_VERIFY_FLAGS =
@@ -63,6 +53,13 @@ static const unsigned int STANDARD_NOT_MANDATORY_VERIFY_FLAGS =
 
 /** Used as the flags parameter to sequence and nLocktime checks in non-consensus code. */
 static const unsigned int STANDARD_LOCKTIME_VERIFY_FLAGS = LOCKTIME_VERIFY_SEQUENCE | LOCKTIME_MEDIAN_TIME_PAST;
+
+/**
+ * Used as the flags parameters to check for sigops as if OP_CHECKDATASIG is
+ * enabled. Can be removed after OP_CHECKDATASIG is activated as the flag is
+ * made standard.
+ */
+static const uint32_t STANDARD_CHECKDATASIG_VERIFY_FLAGS = STANDARD_SCRIPT_VERIFY_FLAGS | SCRIPT_ENABLE_CHECKDATASIG;
 
 bool IsStandard(const CScript &scriptPubKey, txnouttype &whichType);
 /**

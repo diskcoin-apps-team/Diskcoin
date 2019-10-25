@@ -1,11 +1,11 @@
 // Copyright (c) 2012-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "bloom.h"
 
-#include "hashwrapper.h"
+#include "hash.h"
 #include "primitives/transaction.h"
 #include "random.h"
 #include "script/script.h"
@@ -182,8 +182,7 @@ bool CBloomFilter::IsWithinSizeConstraints() const
     return vData.size() <= SMALLEST_MAX_BLOOM_FILTER_SIZE && nHashFuncs <= MAX_HASH_FUNCS;
 }
 
-#ifndef ANDROID // We do not want to pull "Solver" into the Android cashlib compile
-bool CBloomFilter::MatchAndInsertOutputs(const CTransactionRef &tx)
+bool CBloomFilter::IsRelevantAndUpdate(const CTransactionRef &tx)
 {
     bool fFound = false;
     // Match if the filter contains the hash of tx
@@ -228,13 +227,9 @@ bool CBloomFilter::MatchAndInsertOutputs(const CTransactionRef &tx)
         }
     }
 
-    return (fFound);
-}
+    if (fFound)
+        return true;
 
-bool CBloomFilter::MatchInputs(const CTransactionRef &tx)
-{
-    if (isEmpty)
-        return false;
     for (const CTxIn &txin : tx->vin)
     {
         // Match if the filter contains an outpoint tx spends
@@ -256,7 +251,6 @@ bool CBloomFilter::MatchInputs(const CTransactionRef &tx)
 
     return false;
 }
-#endif
 
 void CBloomFilter::UpdateEmptyFull()
 {
@@ -372,9 +366,7 @@ bool CRollingBloomFilter::contains(const uint256 &hash) const
 bool CRollingBloomFilter::contains(const COutPoint &outpoint) const { return contains(ToVector(outpoint)); }
 void CRollingBloomFilter::reset()
 {
-#ifndef ANDROID // On Android don't pick a new tweak value because we don't have GetRand
     nTweak = GetRand(std::numeric_limits<unsigned int>::max());
-#endif
     nEntriesThisGeneration = 0;
     nGeneration = 1;
     for (std::vector<uint64_t>::iterator it = data.begin(); it != data.end(); it++)
@@ -382,3 +374,77 @@ void CRollingBloomFilter::reset()
         *it = 0;
     }
 }
+
+//add for diskcoin -->
+#define Nhfn 6
+#define Nhbit (POC_FILTER_FLEN*8)
+#define Nmsync 100
+#define Nsyncsec 120
+
+bool CPocBloomFilter::load (const char *path) {
+    strncpy(this->path, path, sizeof(this->path)-1); //save it first, because sync need it.
+
+    if (read_bin_file (this->path, this->data, sizeof(this->data)) != sizeof(this->data)) {
+        return false;
+    }
+
+    this->nModify = 0;
+    this->nFirstMdyTime = GetTime();
+    return true;
+}
+
+void CPocBloomFilter::clear() {
+    memset (this->data, 0, sizeof(this->data));
+    this->nModify = 1;
+    this->nFirstMdyTime = GetTime();
+}
+
+bool CPocBloomFilter::sync () {
+    //assert (this->path);
+    if (this->nModify == 0) {
+        return true;
+    }
+
+    if (write_bin_file (this->path, this->data, sizeof(this->data)) != sizeof(this->data)) {
+        LOGAF("Failed to sync %s", this->path);
+        return false;
+    }
+    LOGAF("Succeed to sync %s, nsync: %llu, %s", this->path, this->nModify, 
+        DateTimeStrFormat("%Y-%m-%d %H:%M:%S", this->nFirstMdyTime));
+
+    this->nModify = 0;
+    this->nFirstMdyTime = GetTime();
+    return true;
+}
+
+void CPocBloomFilter::insert(const uint256 &hash) {
+    std::vector<unsigned char> vKey(hash.begin(), hash.end());
+
+    for (unsigned int i = 0; i < Nhfn; i++) {
+        unsigned int nIndex = MurmurHash3(i * 0xFBA4C795 + 0x49393, vKey) % Nhbit;
+        // Sets bit nIndex of this->data
+        this->data[nIndex >> 3] |= (1 << (7 & nIndex));
+    }
+    this->nModify++;
+    
+    if (this->nModify >= (Nmsync >> 3)) {
+        if (this->nModify >= Nmsync || this->nFirstMdyTime + Nsyncsec < GetTime()) {
+            this->sync();
+        }
+    }
+}
+
+bool CPocBloomFilter::contains(const uint256 &hash) const {
+    std::vector<unsigned char> vKey(hash.begin(), hash.end());
+
+    for (unsigned int i = 0; i < Nhfn; i++) {
+        unsigned int nIndex = MurmurHash3(i * 0xFBA4C795 + 0x49393, vKey) % Nhbit;
+        // Checks bit nIndex of this->data
+        if (!(this->data[nIndex >> 3] & (1 << (7 & nIndex)))){
+            return false;
+        }
+    }
+    return true;
+}
+
+//<--

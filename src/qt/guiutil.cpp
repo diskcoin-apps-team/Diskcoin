@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -129,7 +129,7 @@ void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)
     const CChainParams &params = Params();
     // We don't want translators to use own addresses in translations
     // and this is the only place, where this address is supplied.
-    widget->setPlaceholderText(QObject::tr("Enter a Bitcoin address (e.g. %1)")
+    widget->setPlaceholderText(QObject::tr("Enter a Diskcoin address (e.g. %1)")
                                    .arg(QString::fromStdString(DummyAddress(params, GetConfig()))));
     widget->setValidator(new BitcoinAddressEntryValidator(params.CashAddrPrefix(), parent));
     widget->setCheckValidator(new BitcoinAddressCheckValidator(parent));
@@ -148,7 +148,7 @@ QString bitcoinURIScheme(const CChainParams &params, bool useCashAddr)
 {
     if (!useCashAddr)
     {
-        return "bitcoincash";
+        return "diskcoin";
     }
     return QString::fromStdString(params.CashAddrPrefix());
 }
@@ -215,7 +215,7 @@ bool parseBitcoinURI(const QString &scheme, const QUrl &uri, SendCoinsRecipient 
         {
             if (!i->second.isEmpty())
             {
-                if (!BitcoinUnits::parse(BitcoinUnits::BCH, i->second, &rv.amount))
+                if (!BitcoinUnits::parse(BitcoinUnits::DISC, i->second, &rv.amount))
                 {
                     return false;
                 }
@@ -260,7 +260,7 @@ QString formatBitcoinURI(const Config &cfg, const SendCoinsRecipient &info)
     if (info.amount)
     {
         ret += QString("?amount=%1")
-                   .arg(BitcoinUnits::format(BitcoinUnits::BCH, info.amount, false, BitcoinUnits::separatorNever));
+                   .arg(BitcoinUnits::format(BitcoinUnits::DISC, info.amount, false, BitcoinUnits::separatorNever));
         paramCount++;
     }
 
@@ -633,15 +633,15 @@ fs::path static StartupShortcutPath()
 {
     std::string chain = ChainNameFromCommandLine();
     if (chain == CBaseChainParams::MAIN)
-        return GetSpecialFolderPath(CSIDL_STARTUP) / "Bitcoin.lnk";
+        return GetSpecialFolderPath(CSIDL_STARTUP) / "Diskcoin.lnk";
     if (chain == CBaseChainParams::TESTNET) // Remove this special case when CBaseChainParams::TESTNET = "testnet4"
-        return GetSpecialFolderPath(CSIDL_STARTUP) / "Bitcoin (testnet).lnk";
-    return GetSpecialFolderPath(CSIDL_STARTUP) / strprintf("Bitcoin (%s).lnk", chain);
+        return GetSpecialFolderPath(CSIDL_STARTUP) / "Diskcoin (testnet).lnk";
+    return GetSpecialFolderPath(CSIDL_STARTUP) / strprintf("Diskcoin (%s).lnk", chain);
 }
 
 bool GetStartOnSystemStartup()
 {
-    // check for Bitcoin*.lnk
+    // check for Diskcoin*.lnk
     return fs::exists(StartupShortcutPath());
 }
 
@@ -652,18 +652,18 @@ bool SetStartOnSystemStartup(bool fAutoStart)
 
     if (fAutoStart)
     {
-        CoInitialize(nullptr);
+        CoInitialize(NULL);
 
         // Get a pointer to the IShellLink interface.
-        IShellLink *psl = nullptr;
+        IShellLink *psl = NULL;
         HRESULT hres = CoCreateInstance(
-            CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLink, reinterpret_cast<void **>(&psl));
+            CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLink, reinterpret_cast<void **>(&psl));
 
         if (SUCCEEDED(hres))
         {
             // Get the current executable path
             TCHAR pszExePath[MAX_PATH];
-            GetModuleFileName(nullptr, pszExePath, sizeof(pszExePath));
+            GetModuleFileName(NULL, pszExePath, sizeof(pszExePath));
 
             // Start client minimized
             QString strArgs = "-min";
@@ -692,7 +692,7 @@ bool SetStartOnSystemStartup(bool fAutoStart)
 
             // Query IShellLink for the IPersistFile interface for
             // saving the shortcut in persistent storage.
-            IPersistFile *ppf = nullptr;
+            IPersistFile *ppf = NULL;
             hres = psl->QueryInterface(IID_IPersistFile, reinterpret_cast<void **>(&ppf));
             if (SUCCEEDED(hres))
             {
@@ -776,9 +776,9 @@ bool SetStartOnSystemStartup(bool fAutoStart)
         optionFile << "[Desktop Entry]\n";
         optionFile << "Type=Application\n";
         if (chain == CBaseChainParams::MAIN)
-            optionFile << "Name=Bitcoin\n";
+            optionFile << "Name=Diskcoin\n";
         else
-            optionFile << strprintf("Name=Bitcoin (%s)\n", chain);
+            optionFile << strprintf("Name=Diskcoin (%s)\n", chain);
         optionFile << "Exec=" << pszExePath << strprintf(" -min -testnet=%d -regtest=%d\n",
                                                    GetBoolArg("-testnet", false), GetBoolArg("-regtest", false));
         optionFile << "Terminal=false\n";
@@ -795,29 +795,29 @@ bool SetStartOnSystemStartup(bool fAutoStart)
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreServices/CoreServices.h>
 
-// NB: caller must release returned ref if it's not nullptr
+// NB: caller must release returned ref if it's not NULL
 LSSharedFileListItemRef findStartupItemInList(LSSharedFileListRef list, CFURLRef findUrl);
 LSSharedFileListItemRef findStartupItemInList(LSSharedFileListRef list, CFURLRef findUrl)
 {
-    LSSharedFileListItemRef foundItem = nullptr;
+    LSSharedFileListItemRef foundItem = NULL;
 
     // loop through the list of startup items and try to find the app
-    CFArrayRef listSnapshot = LSSharedFileListCopySnapshot(list, nullptr);
+    CFArrayRef listSnapshot = LSSharedFileListCopySnapshot(list, NULL);
     for (int i = 0; !foundItem && i < CFArrayGetCount(listSnapshot); ++i)
     {
         LSSharedFileListItemRef item = (LSSharedFileListItemRef)CFArrayGetValueAtIndex(listSnapshot, i);
         UInt32 resolutionFlags = kLSSharedFileListNoUserInteraction | kLSSharedFileListDoNotMountVolumes;
-        CFURLRef currentItemURL = nullptr;
+        CFURLRef currentItemURL = NULL;
 
 #if defined(MAC_OS_X_VERSION_MAX_ALLOWED) && MAC_OS_X_VERSION_MAX_ALLOWED >= 10100
         if (&LSSharedFileListItemCopyResolvedURL)
-            currentItemURL = LSSharedFileListItemCopyResolvedURL(item, resolutionFlags, nullptr);
+            currentItemURL = LSSharedFileListItemCopyResolvedURL(item, resolutionFlags, NULL);
 #if defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED < 10100
         else
-            LSSharedFileListItemResolve(item, resolutionFlags, &currentItemURL, nullptr);
+            LSSharedFileListItemResolve(item, resolutionFlags, &currentItemURL, NULL);
 #endif
 #else
-        LSSharedFileListItemResolve(item, resolutionFlags, &currentItemURL, nullptr);
+        LSSharedFileListItemResolve(item, resolutionFlags, &currentItemURL, NULL);
 #endif
 
         if (currentItemURL && CFEqual(currentItemURL, findUrl))
@@ -837,7 +837,7 @@ LSSharedFileListItemRef findStartupItemInList(LSSharedFileListRef list, CFURLRef
 bool GetStartOnSystemStartup()
 {
     CFURLRef bitcoinAppUrl = CFBundleCopyBundleURL(CFBundleGetMainBundle());
-    LSSharedFileListRef loginItems = LSSharedFileListCreate(nullptr, kLSSharedFileListSessionLoginItems, nullptr);
+    LSSharedFileListRef loginItems = LSSharedFileListCreate(NULL, kLSSharedFileListSessionLoginItems, NULL);
     LSSharedFileListItemRef foundItem = findStartupItemInList(loginItems, bitcoinAppUrl);
     // findStartupItemInList retains the item it returned, need to release
     if (foundItem)
@@ -850,14 +850,14 @@ bool GetStartOnSystemStartup()
 bool SetStartOnSystemStartup(bool fAutoStart)
 {
     CFURLRef bitcoinAppUrl = CFBundleCopyBundleURL(CFBundleGetMainBundle());
-    LSSharedFileListRef loginItems = LSSharedFileListCreate(nullptr, kLSSharedFileListSessionLoginItems, nullptr);
+    LSSharedFileListRef loginItems = LSSharedFileListCreate(NULL, kLSSharedFileListSessionLoginItems, NULL);
     LSSharedFileListItemRef foundItem = findStartupItemInList(loginItems, bitcoinAppUrl);
 
     if (fAutoStart && !foundItem)
     {
         // add bitcoin app to startup item list
         LSSharedFileListInsertItemURL(
-            loginItems, kLSSharedFileListItemBeforeFirst, nullptr, nullptr, bitcoinAppUrl, nullptr, nullptr);
+            loginItems, kLSSharedFileListItemBeforeFirst, NULL, NULL, bitcoinAppUrl, NULL, NULL);
     }
     else if (!fAutoStart && foundItem)
     {
@@ -905,21 +905,6 @@ void restoreWindowGeometry(const QString &strSetting, const QSize &defaultSize, 
 
     if (QApplication::desktop()->screenNumber(parent) == -1)
         parent->move(posCenter);
-}
-
-void saveColumnConfiguration(const QString &strSetting, QHeaderView *header)
-{
-    QSettings settings;
-    settings.setValue(strSetting + "Columns", header->saveState());
-}
-
-bool restoreColumnConfiguration(const QString &strSetting, QHeaderView *header)
-{
-    QSettings settings;
-    if (!settings.contains(strSetting + "Columns"))
-        return false;
-
-    return header->restoreState(settings.value(strSetting + "Columns").toByteArray());
 }
 
 void setClipboard(const QString &str)
@@ -992,9 +977,6 @@ QString formatServicesStr(quint64 mask, const QStringList &additionalServices)
             case NODE_CF:
                 strList.append("CF");
                 break;
-            case NODE_NETWORK_LIMITED:
-                strList.append("LIMITED");
-                break;
             default:
                 strList.append(QString("%1[%2]").arg("UNKNOWN").arg(check));
             }
@@ -1022,5 +1004,5 @@ QString formatTimeOffset(int64_t nTimeOffset)
     return QString(QObject::tr("%1 s")).arg(QString::number((int)nTimeOffset, 10));
 }
 
-QString uriPrefix() { return "bitcoincash"; }
+QString uriPrefix() { return "diskcoin"; }
 } // namespace GUIUtil

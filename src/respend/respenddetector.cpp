@@ -1,5 +1,4 @@
 // Copyright (c) 2018 The Bitcoin developers
-// Copyright (c) 2018-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -65,7 +64,7 @@ RespendDetector::~RespendDetector()
 
 void RespendDetector::CheckForRespend(const CTxMemPool &pool, const CTransactionRef &ptx)
 {
-    READLOCK(pool.cs_txmempool); // protect pool.mapNextTx
+    READLOCK(pool.cs); // protect pool.mapNextTx
 
     for (const CTxIn &in : ptx->vin)
     {

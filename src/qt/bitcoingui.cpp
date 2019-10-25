@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -22,6 +22,7 @@
 #include "rpcconsole.h"
 #include "unlimiteddialog.h" // BU
 #include "utilitydialog.h"
+#include <QDesktopServices>
 
 #ifdef ENABLE_WALLET
 #include "walletframe.h"
@@ -74,6 +75,9 @@ BitcoinGUI::BitcoinGUI(const Config *_cfg,
       aboutQtAction(0), openRPCConsoleAction(0), openAction(0), showHelpMessageAction(0), trayIcon(0), trayIconMenu(0),
       notificator(0), rpcConsole(0), helpMessageDialog(0), prevBlocks(0), spinnerFrame(0),
       platformStyle(_platformStyle), cfg(_cfg)
+      //add for diskcoin -->
+      , genpidAction(0)
+      //<--
 {
     GUIUtil::restoreWindowGeometry("nWindow", QSize(850, 550), this);
 
@@ -228,7 +232,7 @@ void BitcoinGUI::createActions()
     tabGroup->addAction(overviewAction);
 
     sendCoinsAction = new QAction(platformStyle->SingleColorIcon(":/icons/send"), tr("&Send"), this);
-    sendCoinsAction->setStatusTip(tr("Send coins to a Bitcoin address"));
+    sendCoinsAction->setStatusTip(tr("Send coins to a Diskcoin address"));
     sendCoinsAction->setToolTip(sendCoinsAction->statusTip());
     sendCoinsAction->setCheckable(true);
     sendCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_2));
@@ -296,9 +300,9 @@ void BitcoinGUI::createActions()
     toggleHideAction->setStatusTip(tr("Show or hide the main Window"));
 
     // BU
-    unlimitedAction = new QAction(platformStyle->TextColorIcon(":/icons/options"), tr("&Unlimited..."), this);
-    unlimitedAction->setStatusTip(tr("Modify Bitcoin Unlimited Options"));
-    unlimitedAction->setMenuRole(QAction::PreferencesRole);
+    //unlimitedAction = new QAction(platformStyle->TextColorIcon(":/icons/options"), tr("&Diskcoin..."), this);
+    //unlimitedAction->setStatusTip(tr("Modify Diskcoin Options"));
+    //unlimitedAction->setMenuRole(QAction::PreferencesRole);
 
     encryptWalletAction =
         new QAction(platformStyle->TextColorIcon(":/icons/lock_closed"), tr("&Encrypt Wallet..."), this);
@@ -310,10 +314,10 @@ void BitcoinGUI::createActions()
         new QAction(platformStyle->TextColorIcon(":/icons/key"), tr("&Change Passphrase..."), this);
     changePassphraseAction->setStatusTip(tr("Change the passphrase used for wallet encryption"));
     signMessageAction = new QAction(platformStyle->TextColorIcon(":/icons/edit"), tr("Sign &message..."), this);
-    signMessageAction->setStatusTip(tr("Sign messages with your Bitcoin addresses to prove you own them"));
+    signMessageAction->setStatusTip(tr("Sign messages with your Diskcoin addresses to prove you own them"));
     verifyMessageAction = new QAction(platformStyle->TextColorIcon(":/icons/verify"), tr("&Verify message..."), this);
     verifyMessageAction->setStatusTip(
-        tr("Verify messages to ensure they were signed with specified Bitcoin addresses"));
+        tr("Verify messages to ensure they were signed with specified Diskcoin addresses"));
 
     openRPCConsoleAction = new QAction(platformStyle->TextColorIcon(":/icons/debugwindow"), tr("&Debug window"), this);
     openRPCConsoleAction->setStatusTip(tr("Open debugging and diagnostic console"));
@@ -334,7 +338,13 @@ void BitcoinGUI::createActions()
         new QAction(platformStyle->TextColorIcon(":/icons/info"), tr("&Command-line options"), this);
     showHelpMessageAction->setMenuRole(QAction::NoRole);
     showHelpMessageAction->setStatusTip(
-        tr("Show the %1 help message to get a list with possible Bitcoin command-line options").arg(tr(PACKAGE_NAME)));
+        tr("Show the %1 help message to get a list with possible Diskcoin command-line options").arg(tr(PACKAGE_NAME)));
+
+    //add for diskcoin -->
+    genpidAction = new QAction(platformStyle->TextColorIcon(":/icons/key"), tr("Generate &Plotter ID..."), this);
+    genpidAction->setStatusTip(tr("Generate Plotter ID"));
+    connect(genpidAction, SIGNAL(triggered()), this, SLOT(genpidWindow()));
+    //<--
 
     connect(quitAction, SIGNAL(triggered()), qApp, SLOT(quit()));
     connect(aboutAction, SIGNAL(triggered()), this, SLOT(aboutClicked()));
@@ -400,6 +410,10 @@ void BitcoinGUI::createMenuBar()
     settings->addAction(optionsAction);
     settings->addAction(unlimitedAction);
 
+    //add for diskcoin -->
+    QMenu *tools = appMenuBar->addMenu(tr("&Tools"));
+    tools->addAction(genpidAction);
+    //<--
     QMenu *help = appMenuBar->addMenu(tr("&Help"));
     if (walletFrame)
     {
@@ -440,7 +454,7 @@ void BitcoinGUI::setClientModel(ClientModel *_clientModel)
         connect(_clientModel, SIGNAL(numConnectionsChanged(int)), this, SLOT(setNumConnections(int)));
 
         setNumBlocks(_clientModel->getNumBlocks(), _clientModel->getLastBlockDate(),
-            _clientModel->getVerificationProgress(nullptr));
+            _clientModel->getVerificationProgress(NULL));
         connect(_clientModel, SIGNAL(numBlocksChanged(int, QDateTime, double)), this,
             SLOT(setNumBlocks(int, QDateTime, double)));
 
@@ -602,7 +616,14 @@ void BitcoinGUI::showDebugWindow()
     rpcConsole->raise();
     rpcConsole->activateWindow();
 }
-
+//add for diskcoin -->
+void BitcoinGUI::genpidWindow()
+{
+    QString local=QString("https://diskcoin.org/PidGenerator/index.html");
+    QUrl url(local);
+    QDesktopServices::openUrl(url);
+}
+//<--
 void BitcoinGUI::showDebugWindowActivateConsole()
 {
     rpcConsole->setTabFocus(RPCConsole::TAB_CONSOLE);
@@ -690,7 +711,7 @@ void BitcoinGUI::setNumConnections(int count)
     }
     labelConnectionsIcon->setPixmap(
         platformStyle->SingleColorIcon(icon).pixmap(STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE));
-    labelConnectionsIcon->setToolTip(tr("%n active connection(s) to Bitcoin network", "", count));
+    labelConnectionsIcon->setToolTip(tr("%n active connection(s) to Diskcoin network", "", count));
 }
 
 void BitcoinGUI::setNumBlocks(int count, const QDateTime &blockDate, double nVerificationProgress)
@@ -810,7 +831,7 @@ CLeakyBucket infoShowTime(20000, 10);
 
 void BitcoinGUI::message(const QString &title, const QString &message, unsigned int style, bool *ret)
 {
-    QString strTitle = tr("Bitcoin"); // default title
+    QString strTitle = tr("Diskcoin"); // default title
     // Default to information icon
     int nMBoxIcon = QMessageBox::Information;
     int nNotifyIcon = Notificator::Information;
@@ -845,7 +866,7 @@ void BitcoinGUI::message(const QString &title, const QString &message, unsigned 
         msgType = title;
     }
 
-    // Append title to "Bitcoin - "
+    // Append title to "Diskcoin - "
     if (!msgType.isEmpty())
         strTitle += " - " + msgType;
 
@@ -872,7 +893,7 @@ void BitcoinGUI::message(const QString &title, const QString &message, unsigned 
         showNormalIfMinimized();
         QMessageBox mBox((QMessageBox::Icon)nMBoxIcon, strTitle, message, buttons, this);
         int r = mBox.exec();
-        if (ret != nullptr)
+        if (ret != NULL)
             *ret = r == QMessageBox::Ok;
     }
     else

@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -259,7 +259,7 @@ void BitcoinCore::initialize(Config *cfg)
     }
     catch (...)
     {
-        handleRunawayException(nullptr);
+        handleRunawayException(NULL);
     }
 }
 
@@ -281,7 +281,7 @@ void BitcoinCore::shutdown()
     }
     catch (...)
     {
-        handleRunawayException(nullptr);
+        handleRunawayException(NULL);
     }
 }
 
@@ -336,7 +336,7 @@ void BitcoinApplication::createPlatformStyle()
 
 void BitcoinApplication::createOptionsModel(bool resetSettings)
 {
-    optionsModel = new OptionsModel(nullptr, resetSettings);
+    optionsModel = new OptionsModel(NULL, resetSettings);
     unlimitedModel = new UnlimitedModel(); // BU
 }
 
@@ -483,7 +483,7 @@ void BitcoinApplication::shutdownResult(int retval)
 void BitcoinApplication::handleRunawayException(const QString &message)
 {
     QMessageBox::critical(0, "Runaway exception",
-        BitcoinGUI::tr("A fatal error occurred. Bitcoin can no longer continue safely and will quit.") +
+        BitcoinGUI::tr("A fatal error occurred. Diskcoin can no longer continue safely and will quit.") +
             QString("\n\n") + message);
     ::exit(EXIT_FAILURE);
 }
@@ -626,7 +626,10 @@ bool TryMigrateQtAppSettings(const QString &oldOrg, const QString &oldApp, const
 
 #ifndef BITCOIN_QT_TEST
 int main(int argc, char *argv[])
-{
+{    //add for diskcoin -->
+    g_argv = argv;
+    g_argc = argc;
+    //<--
     SetupEnvironment();
 
     // Do not refer to data directory yet, this can be overridden by Intro::pickDataDirectory
@@ -673,7 +676,7 @@ int main(int argc, char *argv[])
     catch (const std::exception &e)
     {
         QMessageBox::critical(
-            0, QObject::tr("Bitcoin"), QObject::tr("Error: Cannot parse program options: %1.").arg(e.what()));
+            0, QObject::tr("Diskcoin"), QObject::tr("Error: Cannot parse program options: %1.").arg(e.what()));
         return EXIT_FAILURE;
     }
 
@@ -714,7 +717,7 @@ int main(int argc, char *argv[])
     // but before showing splash screen.
     if (mapArgs.count("-?") || mapArgs.count("-h") || mapArgs.count("-help") || mapArgs.count("-version"))
     {
-        HelpMessageDialog help(nullptr, mapArgs.count("-version"));
+        HelpMessageDialog help(NULL, mapArgs.count("-version"));
         help.showOrPrint();
         return EXIT_SUCCESS;
     }
@@ -829,6 +832,11 @@ int main(int argc, char *argv[])
         app.requestShutdown();
         app.exec();
     }
+    catch(const UniValue &objError)
+    {
+        LOGA("Catch Exception objError:%s", objError.get_str());
+        app.handleRunawayException(QString::fromStdString(strMiscWarning));
+    }
     catch (const std::exception &e)
     {
         PrintExceptionContinue(&e, "Runaway exception");
@@ -836,7 +844,7 @@ int main(int argc, char *argv[])
     }
     catch (...)
     {
-        PrintExceptionContinue(nullptr, "Runaway exception");
+        PrintExceptionContinue(NULL, "Runaway exception");
         app.handleRunawayException(QString::fromStdString(strMiscWarning));
     }
 

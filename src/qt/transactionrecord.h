@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2013 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2017 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -43,6 +43,7 @@ public:
         Conflicted, /**< Conflicts with other transaction or mempool **/
         /// Generated (mined) transactions
         Immature, /**< Mined but waiting for maturity */
+        unstaking,
         MaturesWarning, /**< Transaction will likely not mature because no nodes have confirmed */
         NotAccepted /**< Mined but not accepted */
     };
@@ -85,6 +86,10 @@ public:
         RecvWithAddress,
         RecvFromOther,
         SendToSelf,
+        StakeIn,
+        StakeOut,
+        StakeFrom,
+        UnStake,
         PublicLabel
     };
 

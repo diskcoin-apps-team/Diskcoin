@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,7 +9,7 @@
 
 #include "compressor.h"
 #include "core_memusage.h"
-#include "hashwrapper.h"
+#include "hash.h"
 #include "memusage.h"
 #include "serialize.h"
 #include "sync.h"
@@ -293,21 +293,11 @@ public:
         size_t &nChildCachedCoinsUsage);
 
     /**
-     * Check if we have the given utxo on disk and load it into cache.
+     * Check if we have the given utxo already loaded in this cache.
      * The semantics are the same as HaveCoin(), but no calls to
      * the backing CCoinsView are made.
      */
-    bool GetCoinFromDB(const COutPoint &outpoint) const;
-
-    /**
-     * Check if we have the given utxo already loaded in this cache.
-     *
-     * @param[in]  outpoint   A reference to an outpoint in the coin we are checking
-     * @param[out] fSpent     A reference to an bool which indicates if the coin was spent or not
-     *                        NOTE: this value will not be set if the coin does not exist in cache.
-     * @return     bool       A return of true only indicates the coin is in cache, but not if it is spent/unspent
-     */
-    bool HaveCoinInCache(const COutPoint &outpoint, bool &fSpent) const;
+    bool HaveCoinInCache(const COutPoint &outpoint) const;
 
     /**
      * Return a reference to Coin in the cache, or a pruned one if not found. This is

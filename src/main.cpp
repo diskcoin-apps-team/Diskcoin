@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,7 +10,6 @@
 #include "arith_uint256.h"
 #include "blockrelay/blockrelay_common.h"
 #include "blockrelay/graphene.h"
-#include "blockrelay/mempool_sync.h"
 #include "blockrelay/thinblock.h"
 #include "blockstorage/blockstorage.h"
 #include "blockstorage/sequential_files.h"
@@ -24,8 +23,7 @@
 #include "consensus/validation.h"
 #include "dosman.h"
 #include "expedited.h"
-#include "hashwrapper.h"
-#include "index/txindex.h"
+#include "hash.h"
 #include "init.h"
 #include "merkleblock.h"
 #include "net.h"
@@ -75,9 +73,10 @@
  * Global state
  */
 
-std::atomic<bool> fImporting{false};
-std::atomic<bool> fReindex{false};
-bool fBlocksOnly = false;
+// BU moved CWaitableCriticalSection csBestBlock;
+// BU moved CConditionVariable cvBlockChange;
+bool fImporting = false;
+bool fReindex = false;
 bool fTxIndex = false;
 bool fHavePruned = false;
 bool fPruneMode = false;
@@ -100,6 +99,7 @@ extern CCriticalSection cs_mapInboundConnectionTracker;
 
 extern CCriticalSection cs_LastBlockFile;
 
+extern CBlockIndex *pindexBestInvalid;
 extern std::map<uint256, NodeId> mapBlockSource;
 extern std::set<int> setDirtyFileInfo;
 extern uint64_t nBlockSequenceId;
@@ -144,12 +144,8 @@ void InitializeNode(const CNode *pnode)
 
 void FinalizeNode(NodeId nodeid)
 {
-    // Clean up the sync maps
-    ClearDisconnectedFromMempoolSyncMaps(nodeid);
-
-    // Clear thintype block data if we have any.
-    thinrelay.ClearAllBlocksToReconstruct(nodeid);
-    thinrelay.ClearAllBlocksInFlight(nodeid);
+    // Decrement thin type peer counters
+    thinrelay.RemovePeers(connmgr->FindNodeFromId(nodeid).get());
 
     // Update block sync counters
     {
@@ -221,7 +217,6 @@ void UnregisterNodeSignals(CNodeSignals &nodeSignals)
 CBlockIndex *FindForkInGlobalIndex(const CChain &chain, const CBlockLocator &locator)
 {
     // Find the first block the caller has in the main chain
-    AssertLockHeld(cs_main); // for chain
     READLOCK(cs_mapBlockIndex);
     for (const uint256 &hash : locator.vHave)
     {
@@ -285,6 +280,8 @@ bool GetTransaction(const uint256 &hash,
 {
     const CBlockIndex *pindexSlow = blockIndex;
 
+    LOCK(cs_main);
+
     if (blockIndex == nullptr)
     {
         CTransactionRef ptx = mempool.get(hash);
@@ -296,7 +293,28 @@ bool GetTransaction(const uint256 &hash,
 
         if (fTxIndex)
         {
-            return g_txindex->FindTx(hash, hashBlock, txOut);
+            CDiskTxPos postx;
+            if (pblocktree->ReadTxIndex(hash, postx))
+            {
+                CAutoFile file(OpenBlockFile(postx, true), SER_DISK, CLIENT_VERSION);
+                if (file.IsNull())
+                    return error("%s: OpenBlockFile failed", __func__);
+                CBlockHeader header;
+                try
+                {
+                    file >> header;
+                    fseek(file.Get(), postx.nTxOffset, SEEK_CUR);
+                    file >> txOut;
+                }
+                catch (const std::exception &e)
+                {
+                    return error("%s: Deserialize or I/O error - %s", __func__, e.what());
+                }
+                hashBlock = header.GetHash();
+                if (txOut->GetHash() != hash)
+                    return error("%s: txid mismatch", __func__);
+                return true;
+            }
         }
 
         // use coin database to locate block that contains transaction, and scan it
@@ -381,11 +399,11 @@ bool AbortNode(CValidationState &state, const std::string &strMessage, const std
 // too slowly or too quickly).
 //
 void PartitionCheck(bool (*initialDownloadCheck)(),
-    CCriticalSection &cs_partitionCheck,
+    CCriticalSection &cs,
     const CBlockIndex *const &bestHeader,
     int64_t nPowTargetSpacing)
 {
-    if (bestHeader == nullptr || initialDownloadCheck())
+    if (bestHeader == NULL || initialDownloadCheck())
         return;
 
     static int64_t lastAlertTime = 0;
@@ -402,14 +420,14 @@ void PartitionCheck(bool (*initialDownloadCheck)(),
     std::string strWarning;
     int64_t startTime = GetAdjustedTime() - SPAN_SECONDS;
 
-    LOCK(cs_partitionCheck);
+    LOCK(cs);
     const CBlockIndex *i = bestHeader;
     int nBlocks = 0;
     while (i->GetBlockTime() >= startTime)
     {
         ++nBlocks;
         i = i->pprev;
-        if (i == nullptr)
+        if (i == NULL)
             return; // Ran out of chain, we must not be fully sync'ed
     }
 
@@ -484,7 +502,6 @@ bool LoadExternalBlockFile(const CChainParams &chainparams, FILE *fileIn, CDiskB
         CBufferedFile blkdat(fileIn, 2 * (reindexTypicalBlockSize.Value() + MESSAGE_START_SIZE + sizeof(unsigned int)),
             reindexTypicalBlockSize.Value() + MESSAGE_START_SIZE + sizeof(unsigned int), SER_DISK, CLIENT_VERSION);
         uint64_t nRewind = blkdat.GetPos();
-
         while (!blkdat.eof())
         {
             if (shutdown_threads.load() == true)
@@ -555,16 +572,10 @@ bool LoadExternalBlockFile(const CChainParams &chainparams, FILE *fileIn, CDiskB
 
                 // process in case the block isn't known yet
                 auto *pindex = LookupBlockIndex(hash);
-                bool fHaveData = false;
-                if (pindex)
-                {
-                    READLOCK(cs_mapBlockIndex);
-                    fHaveData = (pindex->nStatus & BLOCK_HAVE_DATA);
-                }
-                if (pindex == nullptr || !fHaveData)
+                if (pindex == nullptr || (pindex->nStatus & BLOCK_HAVE_DATA) == 0)
                 {
                     CValidationState state;
-                    if (ProcessNewBlock(state, chainparams, nullptr, &block, true, dbp, false))
+                    if (ProcessNewBlock(state, chainparams, NULL, &block, true, dbp, false))
                         nLoaded++;
                     if (state.IsError())
                         break;
@@ -592,7 +603,7 @@ bool LoadExternalBlockFile(const CChainParams &chainparams, FILE *fileIn, CDiskB
                             LOGA("%s: Processing out of order child %s of %s\n", __func__, block.GetHash().ToString(),
                                 head.ToString());
                             CValidationState dummy;
-                            if (ProcessNewBlock(dummy, chainparams, nullptr, &block, true, &it->second, false))
+                            if (ProcessNewBlock(dummy, chainparams, NULL, &block, true, &it->second, false))
                             {
                                 nLoaded++;
                                 queue.push_back(block.GetHash());
@@ -704,7 +715,7 @@ void MainCleanup()
 
     {
         // orphan transactions
-        WRITELOCK(orphanpool.cs_orphanpool);
+        WRITELOCK(orphanpool.cs);
         orphanpool.mapOrphanTransactions.clear();
         orphanpool.mapOrphanTransactionsByPrev.clear();
     }

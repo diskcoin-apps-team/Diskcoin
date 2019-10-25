@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -12,9 +12,9 @@ BitcoinUnits::BitcoinUnits(QObject *parent) : QAbstractListModel(parent), unitli
 QList<BitcoinUnits::Unit> BitcoinUnits::availableUnits()
 {
     QList<BitcoinUnits::Unit> unitlist;
-    unitlist.append(BCH);
-    unitlist.append(mBCH);
-    unitlist.append(XCH);
+    unitlist.append(DISC);
+    unitlist.append(mDISC);
+    unitlist.append(XDISC);
     return unitlist;
 }
 
@@ -22,9 +22,9 @@ bool BitcoinUnits::valid(int unit)
 {
     switch (unit)
     {
-    case BCH:
-    case mBCH:
-    case XCH:
+    case DISC:
+    case mDISC:
+    case XDISC:
         return true;
     default:
         return false;
@@ -35,12 +35,12 @@ QString BitcoinUnits::name(int unit)
 {
     switch (unit)
     {
-    case BCH:
-        return QString("BCH");
-    case mBCH:
-        return QString("mBCH");
-    case XCH:
-        return QString("cash");
+    case DISC:
+        return QString("DISC");
+    case mDISC:
+        return QString("mDISC");
+    case XDISC:
+        return QString("bits");
     default:
         return QString("???");
     }
@@ -50,12 +50,12 @@ QString BitcoinUnits::description(int unit)
 {
     switch (unit)
     {
-    case BCH:
-        return QString("Bitcoins");
-    case mBCH:
-        return QString("Milli-Bitcoins (1 / 1" THIN_SP_UTF8 "000)");
-    case XCH:
-        return QString("Cash (1 / 1" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
+    case DISC:
+        return QString("Diskcoins");
+    case mDISC:
+        return QString("Milli-Diskcoins (1 / 1" THIN_SP_UTF8 "000)");
+    case XDISC:
+        return QString("Bits (1 / 1" THIN_SP_UTF8 "000" THIN_SP_UTF8 "000)");
     default:
         return QString("???");
     }
@@ -65,11 +65,11 @@ qint64 BitcoinUnits::factor(int unit)
 {
     switch (unit)
     {
-    case BCH:
+    case DISC:
         return 100000000;
-    case mBCH:
+    case mDISC:
         return 100000;
-    case XCH:
+    case XDISC:
         return 100;
     default:
         return 100000000;
@@ -80,11 +80,11 @@ int BitcoinUnits::decimals(int unit)
 {
     switch (unit)
     {
-    case BCH:
+    case DISC:
         return 8;
-    case mBCH:
+    case mDISC:
         return 5;
-    case XCH:
+    case XDISC:
         return 2;
     default:
         return 0;

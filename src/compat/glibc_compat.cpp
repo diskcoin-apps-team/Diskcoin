@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2014 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -71,6 +71,8 @@ __asm(".symver log2f_old,log2f@GLIBC_2.4");
 #elif defined(__aarch64__)
 __asm(".symver logf_old,logf@GLIBC_2.17");
 __asm(".symver log2f_old,log2f@GLIBC_2.17");
+// #else
+// #error "kkkkkkkkkkkkkkkkk"
 #endif
 extern "C" float __wrap_logf(float x) { return logf_old(x); }
 extern "C" float __wrap_log2f(float x) { return log2f_old(x); }

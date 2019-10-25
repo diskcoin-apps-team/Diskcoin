@@ -1,11 +1,11 @@
-[Website](https://www.bitcoinunlimited.info)  | [Download](https://www.bitcoinunlimited.info/download) | [Setup](README.md)   |   [Miner](doc/miner.md)  |  [ElectronCash](doc/bu-electrum-integration.md)  |  [UnconfirmedChains](doc/unconfirmedTxChainLimits.md)
+[Website](https://www.bitcoinunlimited.info)  | [Download](https://www.bitcoinunlimited.info/download) | [Setup](README.md)  |  [Xthin](doc/bu-xthin.md)  |  [Xpedited](doc/bu-xpedited-forwarding.md)  |   [Miner](doc/miner.md)
 
 [![Build Status](https://travis-ci.org/BitcoinUnlimited/BitcoinUnlimited.svg?branch=dev)](https://travis-ci.org/BitcoinUnlimited/BitcoinUnlimited)
 
-# What is Bitcoin Cash?
+# What is Bitcoin?
 
-Bitcoin Cash is an experimental new digital currency that enables instant payments to
-anyone, anywhere in the world. Bitcoin Cash uses peer-to-peer technology to operate
+Bitcoin is an experimental new digital currency that enables instant payments to
+anyone, anywhere in the world. Bitcoin uses peer-to-peer technology to operate
 with no central authority: managing transactions and issuing money are carried
 out collectively by the network. Bitcoin Unlimited is the name of open source
 software which enables the use of this currency.
@@ -34,7 +34,6 @@ For info on installing Bitcoin Unlimited see [INSTALL.md](INSTALL.md)
 For info on building Bitcoin Unlimited from sources, see
 - [Dependencies](doc/dependencies.md)
 - [Unix Build Notes](doc/build-unix.md)
-- [Unix Build Notes (RPM)](doc/build-unix-rpm.md)
 - [Windows Build Notes](doc/build-windows.md)
 - [OpenBSD Build Notes](doc/build-openbsd.md)
 - [macOS Build Notes](doc/build-macos.md)
@@ -45,8 +44,6 @@ They are not complete guides, but include notes on the necessary libraries, comp
 
 # Running / setup
 
-- [Running large unconfirmed transaction chain limits](doc/unconfirmedTxChainLimits.md)
-- [Running an electron cash protocol server](doc/bu-electrum-integration.md)
 - [Getting the most out of Xtreme thinblocks](bu-xthin.md)
 - [Setting up an Xpedited Relay Network](bu-xpedited-forwarding.md)
 - [Tor Support](doc/tor.md)

@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,8 +9,8 @@
 
 #include "primitives/transaction.h"
 #include "serialize.h"
+#include "sync.h"
 #include "uint256.h"
-class arith_uint256;
 
 const uint32_t BIP_009_MASK = 0x20000000;
 const uint32_t BASE_VERSION = 0x20000000;
@@ -20,10 +20,6 @@ const bool DEFAULT_2MB_VOTE = false;
 class CXThinBlock;
 class CThinBlock;
 class CompactBlock;
-class CGrapheneBlock;
-
-/** Get the work equivalent for the supplied nBits of difficulty */
-arith_uint256 GetWorkForDifficultyBits(uint32_t nBits);
 
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
@@ -42,7 +38,13 @@ public:
     uint256 hashMerkleRoot;
     uint32_t nTime;
     uint32_t nBits;
-    uint32_t nNonce;
+    
+    // diskcoin
+    unsigned char sig[32];
+    uint64_t nBaseTarget;
+    uint64_t nPlotterId;
+    uint64_t nNonce;
+    uint64_t nDeadline;
 
     CBlockHeader() { SetNull(); }
     ADD_SERIALIZE_METHODS;
@@ -56,6 +58,15 @@ public:
         READWRITE(nTime);
         READWRITE(nBits);
         READWRITE(nNonce);
+
+		// diskcoin
+        READWRITE(nBaseTarget);
+        READWRITE(nPlotterId);
+        READWRITE(nDeadline);
+        for(int i=0; i<sizeof(sig); i++)
+        {
+			READWRITE(sig[i]);
+        }
     }
 
     void SetNull()
@@ -66,6 +77,12 @@ public:
         nTime = 0;
         nBits = 0;
         nNonce = 0;
+        
+        // diskcoin
+        nBaseTarget = 0;
+        nPlotterId = 0;
+        nDeadline = 0;
+        memset(sig, 0x00, 32);
     }
 
     bool IsNull() const { return (nBits == 0); }
@@ -104,6 +121,34 @@ public:
     {
         SetNull();
         *((CBlockHeader *)this) = header;
+    }
+
+    // return the index of the transaction in this block.  Return -1 if tx is not in this block
+    int find(uint256 hash) const
+    {
+        int nIndex;
+        for (nIndex = 0; nIndex < (int)vtx.size(); nIndex++)
+            if (vtx[nIndex] == *(CTransactionRef *)this)
+                break;
+        if (nIndex == (int)vtx.size())
+        {
+            nIndex = -1;
+        }
+        return nIndex;
+
+#if 0 // efficient but unnecessary
+        LOCK(csBlockHashToIdx);
+        // If the hash to idx map is empty, then fill it up
+        if (hashToIdx.empty()&& (!vtx.empty()))
+        {
+            for (int nIndex = 0; nIndex < (int)vtx.size(); nIndex++)
+                hashToIdx[vtx[nIndex].GetHash()] = nIndex;
+        }
+        // find the hash and return the idx
+        auto pos = hashToIdx.find(hash);
+        if (pos == hashToIdx.end()) return -1;
+        return pos->second;
+#endif
     }
 
     static bool VersionKnown(int32_t nVersion, int32_t voteBits)
@@ -162,6 +207,13 @@ public:
         block.nTime = nTime;
         block.nBits = nBits;
         block.nNonce = nNonce;
+
+        // diskcoin
+        block.nBaseTarget = nBaseTarget;
+        block.nPlotterId = nPlotterId;
+        block.nDeadline = nDeadline;
+        memcpy(block.sig, sig, sizeof(sig));
+        
         return block;
     }
 
@@ -184,21 +236,18 @@ public:
     std::shared_ptr<CThinBlock> thinblock;
     std::shared_ptr<CXThinBlock> xthinblock;
     std::shared_ptr<CompactBlock> cmpctblock;
-    std::shared_ptr<CGrapheneBlock> grapheneblock;
 
     //! Track the current block size during reconstruction: (memory only)
     uint64_t nCurrentBlockSize;
 
     CBlockThinRelay() { SetNull(); }
-    ~CBlockThinRelay() { SetNull(); }
     void SetNull()
     {
         CBlock::SetNull();
         nCurrentBlockSize = 0;
-        thinblock.reset();
-        xthinblock.reset();
-        cmpctblock.reset();
-        grapheneblock.reset();
+        thinblock = nullptr;
+        xthinblock = nullptr;
+        cmpctblock = nullptr;
     }
 };
 

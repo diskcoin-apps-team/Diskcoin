@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2018 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -41,8 +41,11 @@ SplashScreen::SplashScreen(Qt::WindowFlags f, const NetworkStyle *networkStyle) 
     devicePixelRatio = ((QGuiApplication *)QCoreApplication::instance())->devicePixelRatio();
 #endif
 
+    LOGA("QT_VERSION: %d, devicePixelRatio:%ld", QT_VERSION, devicePixelRatio);
+    devicePixelRatio = 1.0;
+
     // define text to place
-    QString titleText = tr("Bitcoin Unlimited Bitcoin Cash");
+    QString titleText = tr("Diskcoin");
     // create a bitmap according to device pixelratio
     QPixmap splash(":/images/splash");
     QSize splashPixSize = splash.size();

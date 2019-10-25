@@ -2,7 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include "electrum/electrumrpcinfo.h"
+#include "electrum/electrs.h"
 #include "rpc/server.h"
 #include <univalue.h>
 
@@ -10,9 +10,18 @@ UniValue getelectruminfo(const UniValue &params, bool fHelp)
 {
     if (fHelp || params.size() != 0)
     {
-        electrum::ElectrumRPCInfo::ThrowHelp();
+        throw std::invalid_argument("getelectruminfo\n"
+                                    "\nReturns status of the electrum server"
+                                    "\nExamples:\n" +
+                                    HelpExampleCli("getblockcount", "") + HelpExampleRpc("getblockcount", ""));
     }
-    return electrum::ElectrumRPCInfo().GetElectrumInfo();
+
+    UniValue info(UniValue::VOBJ);
+    for (auto &kv : electrum::fetch_electrs_info())
+    {
+        info.pushKV(kv.first, kv.second);
+    }
+    return info;
 }
 
 static const CRPCCommand commands[] = {

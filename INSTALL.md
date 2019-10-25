@@ -25,7 +25,7 @@ If you are moving from another Bitcoin compatible implementations (Core, Classic
 You can choose
 
 - Download the setup file (exe), and run the setup program, or
-- download the (zip) file, unpack the files into a directory, and then run bitcoin-qt.exe.
+- download the (zip) file, unpack the files into a directory, and then run diskcoin-qt.exe.
 
 
 ## Linux / Unix
@@ -90,8 +90,10 @@ sudo apt-get install libdb4.8-dev libdb4.8++-dev
 ## Fetching the code and compile it
 
 ```sh
-git clone https://github.com/BitcoinUnlimited/BitcoinUnlimited.git
-cd BitcoinUnlimited
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/BitcoinUnlimited/BitcoinUnlimited.git bu-src
+cd bu-src
 git checkout release 	# or git checkout origin/dev
 ./autogen.sh
 
@@ -118,7 +120,7 @@ sudo make install #(will place them in /usr/local/bin, this step is to be consid
 
 ## QT or the command line:
 
-There are two modes of operation, one uses the QT UI and the other runs as a daemon from the command line.  The QT version is bitcoin-qt or bitcoin-qt.exe, the command line version is bitcoind or bitcoind.exe. No matter which version you run, when you launch for the first time you will have to complete the intial blockchain sync.
+There are two modes of operation, one uses the QT UI and the other runs as a daemon from the command line.  The QT version is bitcoin-qt or diskcoin-qt.exe, the command line version is bitcoind or diskcoin.exe. No matter which version you run, when you launch for the first time you will have to complete the intial blockchain sync.
 
 ## Initial Sync of the blockchain:
 

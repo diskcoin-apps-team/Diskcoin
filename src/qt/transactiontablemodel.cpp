@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2015 The Bitcoin Core developers
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
+// Copyright (c) 2015-2018 The Diskcoin developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -318,6 +318,9 @@ QString TransactionTableModel::formatTxStatus(const TransactionRecord *wtx) cons
     case TransactionStatus::NotAccepted:
         status = tr("Generated but not accepted");
         break;
+    case TransactionStatus::unstaking:
+        status = tr("UnStakeing");
+        break;
     }
 
     return status;
@@ -364,6 +367,14 @@ QString TransactionTableModel::formatTxType(const TransactionRecord *wtx) const
         return tr("Sent to");
     case TransactionRecord::SendToSelf:
         return tr("Payment to yourself");
+    case TransactionRecord::StakeIn:
+        return tr("Stake in");
+    case TransactionRecord::StakeOut:
+        return tr("Stake out");
+    case TransactionRecord::StakeFrom:
+        return tr("Stake from");
+    case TransactionRecord::UnStake:
+        return tr("Unstake");
     case TransactionRecord::Generated:
         return tr("Mined");
     case TransactionRecord::PublicLabel:

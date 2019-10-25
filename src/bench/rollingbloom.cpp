@@ -1,5 +1,4 @@
 // Copyright (c) 2016 The Bitcoin Core developers
-// Copyright (c) 2016-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -24,9 +23,9 @@ static void RollingBloom(benchmark::State& state)
         data[2] = count >> 16;
         data[3] = count >> 24;
         if (countnow == nEntriesPerGeneration) {
-            int64_t b = GetStopwatchMicros();
+            int64_t b = GetTimeMicros();
             filter.insert(data);
-            int64_t e = GetStopwatchMicros();
+            int64_t e = GetTimeMicros();
             std::cout << "RollingBloom-refresh,1," << (e-b)*0.000001 << "," << (e-b)*0.000001 << "," << (e-b)*0.000001 << "\n";
             countnow = 0;
         } else {

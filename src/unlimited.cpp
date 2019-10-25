@@ -1,5 +1,4 @@
 // Copyright (c) 2015 G. Andrew Stone
-// Copyright (c) 2015-2019 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -22,7 +21,7 @@
 #include "dosman.h"
 #include "dstencode.h"
 #include "expedited.h"
-#include "hashwrapper.h"
+#include "hash.h"
 #include "leakybucket.h"
 #include "miner.h"
 #include "net.h"
@@ -46,6 +45,7 @@
 #include "validation/validation.h"
 #include "validationinterface.h"
 #include "version.h"
+#include "shabal/stakedb.h"
 
 #include <atomic>
 #include <boost/lexical_cast.hpp>
@@ -227,18 +227,50 @@ std::string ForkTimeValidator(const uint64_t &value, uint64_t *item, bool valida
 {
     if (validate)
     {
+        if (value != 0 && miningSvForkTime.Value() != 0)
+        {
+            std::ostringstream ret;
+            ret << "Only one fork can be enabled at a time";
+            return ret.str();
+        }
     }
     else // If it was just turned "on" then set to the default activation time.
     {
         if (*item == 1)
         {
-            *item = Params().GetConsensus().nov2019ActivationTime;
+            *item = Params().GetConsensus().may2019ActivationTime;
         }
         settingsToUserAgentString();
     }
     return std::string();
 }
 
+// Ensure that only one fork can be active at a time, update the UA string, and convert values of 1 to the
+// fork time default.
+std::string ForkTimeValidatorSV(const uint64_t &value, uint64_t *item, bool validate)
+{
+    if (validate)
+    {
+        if (value != 0 && miningForkTime.Value() != 0)
+        {
+            std::ostringstream ret;
+            ret << "Only one fork can be enabled at a time";
+            return ret.str();
+        }
+    }
+    else // If it was just turned "on" then set to the default activation time.
+    {
+        if (*item == 1)
+        {
+            // Since SV there's no other fork upcoming we going to use nov2018ActivationTime
+            // but since we removed the variable from src/chainparams.cpp we are going to use
+            // a literal integer here 1542300000 (Nov 15, 2019 15:40:00 UTC)
+            *item = 1542300000;
+        }
+        settingsToUserAgentString();
+    }
+    return std::string();
+}
 // Push all transactions in the mempool to another node
 void UnlimitedPushTxns(CNode *dest);
 
@@ -262,7 +294,7 @@ void UpdateSendStats(CNode *pfrom, const char *strCommand, int msgSize, int64_t 
     }
 }
 
-void UpdateRecvStats(CNode *pfrom, const std::string &strCommand, int msgSize, int64_t nStopwatchTimeReceived)
+void UpdateRecvStats(CNode *pfrom, const std::string &strCommand, int msgSize, int64_t nTimeReceived)
 {
     recvAmt += msgSize;
     std::string name = "net/recv/msg/" + strCommand;
@@ -417,6 +449,8 @@ void settingsToUserAgentString()
     BUComments.clear();
 
     std::string flavor;
+    if (miningSvForkTime.Value() != 0)
+        BUComments.push_back("SV");
 
     std::stringstream ebss;
     ebss << (excessiveBlockSize / 100000);
@@ -446,7 +480,16 @@ void UnlimitedSetup(void)
 
     // If the user configures it to 1, assume this means default
     if (miningForkTime.Value() == 1)
-        miningForkTime = Params().GetConsensus().nov2019ActivationTime;
+        miningForkTime = Params().GetConsensus().may2019ActivationTime;
+    if (miningSvForkTime.Value() == 1)
+        miningSvForkTime = 1542300000;
+
+    if (miningForkTime.Value() != 0 && miningSvForkTime.Value() != 0)
+    {
+        LOGA("Both the SV and ABC forks are enabled.  You must choose one.");
+        printf("Both the SV and ABC forks are enabled.  You must choose one.\n");
+        exit(1);
+    }
 
     if (maxGeneratedBlock > excessiveBlockSize)
     {
@@ -505,6 +548,47 @@ void UnlimitedSetup(void)
     // Start Internal CPU miner
     // Generate coins in the background
     GenerateBitcoins(GetBoolArg("-gen", DEFAULT_GENERATE), GetArg("-genproclimit", DEFAULT_GENERATE_THREADS), Params());
+
+
+    // Modify checkpoints depending on whether BCH or SV fork
+    if (Params().NetworkIDString() == "main")
+    {
+        CCheckpointData &checkpoints = ModifiableParams().ModifiableCheckpoints();
+        if (nMiningSvForkTime == 0)
+        {
+            // Nov 15th 2018 activate LTOR, DSV op_code
+            checkpoints.mapCheckpoints[556767] =
+                uint256S("0000000000000000004626ff6e3b936941d341c5932ece4357eeccac44e6d56c");
+            // * UNIX timestamp of last checkpoint block
+            checkpoints.nTimeLastCheckpoint = 1542304936;
+            // * total number of transactions between genesis and last checkpoint
+            checkpoints.nTransactionsLastCheckpoint = 265567564;
+            // * estimated number of transactions per day after checkpoint (~3.5 TPS)
+            checkpoints.fTransactionsPerDay = 280000.0;
+        }
+        else if (nMiningSvForkTime != 0)
+        {
+            // Nov 15th 2018 SV fork, 128MB blocks, re-enable bitcoin 0.1.0 op_codes
+            checkpoints.mapCheckpoints[556767] =
+                uint256S("000000000000000001d956714215d96ffc00e0afda4cd0a96c96f8d802b1662b");
+            // * UNIX timestamp of last checkpoint block
+            checkpoints.nTimeLastCheckpoint = 1542305817;
+            // * total number of transactions between genesis and last checkpoint
+            checkpoints.nTransactionsLastCheckpoint = 265615408;
+            // * estimated number of transactions per day after checkpoint (~3.5 TPS)
+            checkpoints.fTransactionsPerDay = 280000.0;
+        }
+        else
+        {
+            // unknown scenario, dont update these values or add a new checkpoint
+            // * UNIX timestamp of last checkpoint block
+            checkpoints.nTimeLastCheckpoint = 1526410186;
+            // * total number of transactions between genesis and last checkpoint
+            checkpoints.nTransactionsLastCheckpoint = 249416375;
+            // * estimated number of transactions per day after checkpoint (~3.5 TPS)
+            checkpoints.fTransactionsPerDay = 280000.0;
+        }
+    }
 }
 
 FILE *blockReceiptLog = nullptr;
@@ -613,20 +697,126 @@ static bool ProcessBlockFound(const CBlock *pblock, const CChainParams &chainpar
     // Inform about the new block
     GetMainSignals().BlockFound(pblock->GetHash());
 
-    // In we are mining our own block or not running in parallel for any reason
-    // we must terminate any block validation threads that are currently running,
-    // Unless they have more work than our own block or are processing a chain
-    // that has more work than our block.
-    PV->StopAllValidationThreads(pblock->GetBlockHeader().nBits);
 
-    // Process this block the same as if we had received it from another node
-    CValidationState state;
-    if (!ProcessNewBlock(state, chainparams, nullptr, pblock, true, nullptr, false))
-        return error("BitcoinMiner: ProcessNewBlock, block not accepted");
+    {
+        // We take a cs_main lock here even though it will also be aquired in ProcessNewBlock.  We want
+        // to make sure we give priority to our own blocks.  This is in order to prevent any other Parallel
+        // Blocks to validate when we've just mined one of our own blocks.
+        LOCK(cs_main);
+
+        // In we are mining our own block or not running in parallel for any reason
+        // we must terminate any block validation threads that are currently running,
+        // Unless they have more work than our own block or are processing a chain
+        // that has more work than our block.
+        PV->StopAllValidationThreads(pblock->GetBlockHeader().nBits);
+
+        // Process this block the same as if we had received it from another node
+        CValidationState state;
+        if (!ProcessNewBlock(state, chainparams, nullptr, pblock, true, nullptr, false))
+            return error("BitcoinMiner: ProcessNewBlock, block not accepted");
+    }
 
     return true;
 }
 
+CCriticalSection cs_blacklist;
+
+std::set<uint64_t> blacklist_s;
+
+void UpdateBlacklist(const std::vector<uint64_t>& data)
+{
+	LOCK(cs_blacklist);
+	blacklist_s.clear();
+	for (auto it=data.begin(); it != data.end(); it++)
+	{
+		blacklist_s.insert(*it);
+	}
+}
+
+bool InBlacklist(uint64_t plotter_id)
+{
+	LOCK(cs_blacklist);
+	return blacklist_s.end() != blacklist_s.find(plotter_id);
+}
+
+std::vector<uint64_t> GetBlacklist()
+{
+	LOCK(cs_blacklist);
+	std::vector<uint64_t> data;
+	for (auto it = blacklist_s.begin(); it != blacklist_s.end(); it++)
+	{
+		data.push_back(*it);
+	}
+	return data;
+}
+
+void AddBlacklist(uint64_t plotter_id)
+{
+	LOCK(cs_blacklist);
+	blacklist_s.insert(plotter_id);
+}
+
+static CSharedCriticalSection cs_submit;
+
+static CSubmit submit_t;
+
+void ReinitSubmitCache(uint64_t height)
+{
+	WRITELOCK(cs_submit);
+	if (height > 0 && height >= submit_t.height)
+	{
+		submit_t.height = 0;
+	}
+}
+
+void GetSubmitCache(CSubmit *pSubmit)
+{
+	READLOCK(cs_submit);
+	pSubmit->height 		= submit_t.height;
+	pSubmit->nonce 		= submit_t.nonce;
+	pSubmit->plotter_id 	= submit_t.plotter_id;
+	pSubmit->deadline 	= submit_t.deadline;
+	pSubmit->base_target = submit_t.base_target;
+    
+	memcpy(pSubmit->gensig, submit_t.gensig, sizeof(submit_t.gensig));
+}
+
+bool FastCheckSubmitCache(uint64_t height, uint64_t deadline) {
+    READLOCK(cs_submit);
+    return (height == submit_t.height && deadline >= submit_t.deadline);
+}
+
+bool SetSubmitCache(uint64_t height, uint64_t nonce, uint64_t plotter_id, uint64_t deadline)
+{
+	WRITELOCK(cs_submit);
+	if (height < submit_t.height || -1 == chainActive.Height() || height != chainActive.Height()+1)
+	{
+		return false;
+	}
+
+	// check deadline again here
+
+	// save
+	bool set = false;
+	if (submit_t.IsInitStatus())
+	{
+		set = true;
+	}
+	else
+	{
+		if (height > submit_t.height || submit_t.deadline > deadline)
+		{
+			set = true;
+		}
+	}
+
+	if (set)
+	{
+		submit_t.Update(height, nonce, plotter_id, deadline);
+	}
+
+	return set;
+}
 
 void static BitcoinMiner(const CChainParams &chainparams)
 {
@@ -634,22 +824,41 @@ void static BitcoinMiner(const CChainParams &chainparams)
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
     RenameThread("bitcoin-miner");
 
-    unsigned int nExtraNonce = 0;
+    // add for diskcoin
+    CTxDestination funddestination = DecodeDestination(FUND_PUB_ADDRESS);
+    if (!IsValidDestination(funddestination))
+    {
+        throw std::runtime_error("invalid fund address");
+    }
+    CScript scriptFundPubKey = GetScriptForDestination(funddestination);
 
-    boost::shared_ptr<CReserveScript> coinbaseScript;
-    GetMainSignals().ScriptForMining(coinbaseScript);
-
+	boost::shared_ptr<CReserveScript> coinbaseScript;
+    
     try
     {
         // Throw an error if no script was provided.  This can happen
         // due to some internal error but also if the keypool is empty.
-        // In the latter case, already the pointer is nullptr.
-        if (!coinbaseScript || coinbaseScript->reserveScript.empty())
-            throw std::runtime_error("No coinbase script available (mining requires a wallet)");
+        // In the latter case, already the pointer is NULL.
+        while (!coinbaseScript || coinbaseScript->reserveScript.empty())
+        {
+    		GetMainSignals().ScriptForMining(coinbaseScript);
+    		MilliSleep(1000);
+    		LOGA("wait for g_signals init. \n");
+        }
+        //update immd
+        {
+            CBlockIndex *pindex = chainActive.Tip();
+            if (pindex)
+                stakedb_restep_to (pindex);
+        }
+        LOGA("g_signals has init.\n");
+        
+        // if (!coinbaseScript || coinbaseScript->reserveScript.empty())
+        //     throw std::runtime_error("No coinbase script available (mining requires a wallet)");
 
         while (true)
         {
-            if (chainparams.MiningRequiresPeers())
+            /*if (chainparams.MiningRequiresPeers())
             {
                 // Busy-wait for the network to come online so we don't waste time mining
                 // on an obsolete chain. In regtest mode we expect to fly solo.
@@ -663,8 +872,49 @@ void static BitcoinMiner(const CChainParams &chainparams)
                     if (!fvNodesEmpty && !IsInitialBlockDownload())
                         break;
                     MilliSleep(1000);
+                    LOGA("==== do while %d %d\n", !fvNodesEmpty, !IsInitialBlockDownload());
                 } while (true);
+            }*/
+
+			// diskcoin may be using pre-build block 
+			CSubmit submit;
+            while (true)
+            {
+				GetSubmitCache( &submit);
+				if (submit.IsInitStatus())
+				{
+                    if (Params().NetworkIDString() == "regtest") {
+                        MilliSleep(1);
+                        continue;
+                    }
+					MilliSleep(1000);
+					continue;
+				}
+
+				auto next_height = chainActive.Height()+1;
+				if (submit.height == next_height)
+				{
+                    //--->fast test-->
+                    if (Params().NetworkIDString() == "regtest") {
+                        break;
+                    }
+                    //<--
+
+					auto last = chainActive.Height();
+					auto prev = chainActive[last];
+					if (prev->nTime+submit.deadline < GetTime())
+					{
+						break;
+					}
+					MilliSleep(500);
+				}
+				else
+				{
+					ReinitSubmitCache(next_height);
+				}
             }
+            LOGA("Get mined %d sig %s, dl %llu, nonce %llu, pid %llu, base_target %llu", 
+                submit.height, HexEncode(submit.gensig, 32), submit.deadline, submit.nonce, submit.plotter_id, submit.base_target);
 
             //
             // Create new block
@@ -677,7 +927,7 @@ void static BitcoinMiner(const CChainParams &chainparams)
             }
 
             unique_ptr<CBlockTemplate> pblocktemplate(
-                BlockAssembler(chainparams).CreateNewBlock(coinbaseScript->reserveScript));
+                BlockAssembler(chainparams).CreateNewBlock(scriptFundPubKey, coinbaseScript->reserveScript, -1, &submit));
             if (!pblocktemplate.get())
             {
                 LOGA("Error in BitcoinMiner: Keypool ran out, please call keypoolrefill before restarting the "
@@ -685,69 +935,50 @@ void static BitcoinMiner(const CChainParams &chainparams)
                 return;
             }
             CBlock *pblock = &pblocktemplate->block;
-            IncrementExtraNonce(pblock, nExtraNonce);
+            IncrementExtraNonce(pblock, submit.nonce);
 
-            LOGA("Running BitcoinMiner with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
+            LOGA("Running Miner with %u transactions in block (%u bytes)\n", pblock->vtx.size(),
                 pblock->GetBlockSize());
 
-            //
-            // Search
-            //
             int64_t nStart = GetTime();
-            arith_uint256 hashTarget = arith_uint256().SetCompact(pblock->nBits);
-            uint256 hash;
-            uint32_t nNonce = 0;
-            while (true)
+
+			SetThreadPriority(THREAD_PRIORITY_NORMAL);
+			ProcessBlockFound(pblock, chainparams);
+            SetThreadPriority(THREAD_PRIORITY_LOWEST);
+
+            //update immd
             {
-                // Check if something found
-                if (ScanHash(pblock, nNonce, &hash))
-                {
-                    if (UintToArith256(hash) <= hashTarget)
-                    {
-                        // Found a solution
-                        pblock->nNonce = nNonce;
-                        assert(hash == pblock->GetHash());
-
-                        SetThreadPriority(THREAD_PRIORITY_NORMAL);
-                        LOGA("BitcoinMiner:\n");
-                        LOGA("proof-of-work found  \n  hash: %s  \ntarget: %s\n", hash.GetHex(), hashTarget.GetHex());
-                        ProcessBlockFound(pblock, chainparams);
-                        SetThreadPriority(THREAD_PRIORITY_LOWEST);
-                        coinbaseScript->KeepScript();
-
-                        // In regression test mode, stop mining after a block is found.
-                        if (chainparams.MineBlocksOnDemand())
-                            throw boost::thread_interrupted();
-
-                        break;
-                    }
-                }
-
-                // Check for stop or if block needs to be rebuilt
-                boost::this_thread::interruption_point();
-                // Regtest mode doesn't require peers
-                if (vNodes.empty() && chainparams.MiningRequiresPeers())
-                    break;
-                if (nNonce >= 0xffff0000)
-                    break;
-                if (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 60)
-                    break;
-                {
-                    LOCK(cs_main);
-                    if (pindexPrev != chainActive.Tip())
-                        break;
-                }
-
-                // Update nTime every few seconds
-                if (UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev) < 0)
-                    break; // Recreate the block if the clock has run backwards,
-                // so that we can use the correct time.
-                if (chainparams.GetConsensus().fPowAllowMinDifficultyBlocks)
-                {
-                    // Changing pblock->nTime can change work required on testnet:
-                    hashTarget.SetCompact(pblock->nBits);
-                }
+                CBlockIndex *pindex = chainActive.Tip();
+                if (pindex)
+                    stakedb_restep_to (pindex);
             }
+
+            coinbaseScript->KeepScript();
+
+            // In regression test mode, stop mining after a block is found.
+            // if (chainparams.MineBlocksOnDemand())
+            //    throw boost::thread_interrupted();
+                
+	        // Check for stop or if block needs to be rebuilt
+	        // boost::this_thread::interruption_point();
+	        // Regtest mode doesn't require peers
+	        // if (vNodes.empty() && chainparams.MiningRequiresPeers())
+	        //    break;
+
+	        if (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 60)
+	            break;
+	        /*{
+	            LOCK(cs_main);
+	            if (pindexPrev != chainActive.Tip())
+	                break;
+	        }*/
+
+	        // Update nTime every few seconds
+	        if (UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev) < 0)
+	            break; // Recreate the block if the clock has run backwards,
+	        // so that we can use the correct time.
+
+	       	ReinitSubmitCache(submit.height);
         }
     }
     catch (const boost::thread_interrupted &)
@@ -762,79 +993,14 @@ void static BitcoinMiner(const CChainParams &chainparams)
     }
 }
 
+
 void GenerateBitcoins(bool fGenerate, int nThreads, const CChainParams &chainparams)
 {
     static boost::thread_group *minerThreads = nullptr;
 
-    if (nThreads < 0)
-        nThreads = GetNumCores();
-
-    if (minerThreads != nullptr)
-    {
-        minerThreads->interrupt_all();
-        delete minerThreads;
-        minerThreads = nullptr;
-    }
-
-    if (nThreads == 0 || !fGenerate)
-        return;
-
     minerThreads = new boost::thread_group();
-    for (int i = 0; i < nThreads; i++)
-        minerThreads->create_thread(boost::bind(&BitcoinMiner, boost::cref(chainparams)));
-}
-
-/** This function searches the mempool for transactions that are recently acceptable into the mempools of other
-nodes and forwards any found to those nodes.
-*/
-void ForwardAcceptableTransactions(const std::vector<CTxChange> &changeSet)
-{
-    // Start by grabbing node refs to minimize the time that the list is locked.
-    std::vector<CNodeRef> nodes;
-    nodes.reserve(vNodes.size());
-
-    {
-        LOCK(cs_vNodes);
-
-        for (CNode *pNode : vNodes)
-        {
-            if (pNode)
-                nodes.push_back(CNodeRef(pNode));
-        }
-    }
-
-    LOG(MEMPOOL | NET, "Check %d TX applicability to %d nodes\n", changeSet.size(), nodes.size());
-    for (auto &txc : changeSet)
-    {
-        LOG(MEMPOOL | NET, "%s: A:%d->%d, D:%d->%d, AS:%d->%d, DS:%d->%d\n", txc.tx->GetHash().ToString(),
-            txc.prior.countWithAncestors, txc.now.countWithAncestors, txc.prior.countWithDescendants,
-            txc.now.countWithDescendants, txc.prior.sizeWithAncestors, txc.now.sizeWithAncestors,
-            txc.prior.sizeWithDescendants, txc.now.sizeWithDescendants);
-    }
-    // Iterate through all changed transactions and all nodes to see if the tx crosses the nodes reject/accept boundary
-    for (auto &txc : changeSet)
-    {
-        for (auto &node : nodes)
-        {
-            if (!node->IsTxAcceptable(txc.prior))
-            {
-                if (node->IsTxAcceptable(txc.now))
-                {
-                    // forward this tx to this node
-                    LOG(MEMPOOL | NET, "TX %s is now acceptable to node %s\n", txc.tx->GetHash().ToString(),
-                        node->GetLogName());
-                    if (unconfPushAction.Value() == 2)
-                        node->PushMessage(NetMsgType::TX, *(txc.tx));
-                    else if (unconfPushAction.Value() == 1)
-                    {
-                        // I may have relayed this INV to this node before it was willing to accept it so "force" push
-                        // this INV -- that is, ignore the bloom filter that stops repeat INVs
-                        node->PushInventory(CInv(MSG_TX, txc.tx->GetHash()), true);
-                    }
-                }
-            }
-        }
-    }
+    
+	minerThreads->create_thread(boost::bind(&BitcoinMiner, boost::cref(chainparams)));
 }
 
 // RPC read mining status
@@ -901,8 +1067,6 @@ UniValue setgenerate(const UniValue &params, bool fHelp)
 
 int chainContainsExcessive(const CBlockIndex *blk, unsigned int goBack)
 {
-    AssertLockHeld(cs_mapBlockIndex);
-
     if (goBack == 0)
         goBack = excessiveAcceptDepth + EXCESSIVE_BLOCK_CHAIN_RESET;
     for (unsigned int i = 0; i < goBack; i++, blk = blk->pprev)
@@ -917,8 +1081,6 @@ int chainContainsExcessive(const CBlockIndex *blk, unsigned int goBack)
 
 int isChainExcessive(const CBlockIndex *blk, unsigned int goBack)
 {
-    AssertLockHeld(cs_mapBlockIndex);
-
     if (goBack == 0)
         goBack = excessiveAcceptDepth;
     bool recentExcessive = false;
@@ -1036,7 +1198,7 @@ UniValue getexcessiveblock(const UniValue &params, bool fHelp)
                             HelpExampleCli("getexcessiveblock", "") + HelpExampleRpc("getexcessiveblock", ""));
 
     UniValue ret(UniValue::VOBJ);
-    ret.pushKV("excessiveBlockSize", excessiveBlockSize);
+    ret.pushKV("excessiveBlockSize", (uint64_t)excessiveBlockSize);
     ret.pushKV("excessiveAcceptDepth", (uint64_t)excessiveAcceptDepth);
     return ret;
 }
@@ -1057,15 +1219,15 @@ UniValue setexcessiveblock(const UniValue &params, bool fHelp)
                             "\nExamples:\n" +
                             HelpExampleCli("getexcessiveblock", "") + HelpExampleRpc("getexcessiveblock", ""));
 
-    uint64_t ebs = 0;
+    unsigned int ebs = 0;
     if (params[0].isNum())
         ebs = params[0].get_int64();
     else
     {
         string temp = params[0].get_str();
         if (temp[0] == '-')
-            throw runtime_error("Excessive block size has to be a positive number");
-        ebs = std::stoull(temp);
+            boost::throw_exception(boost::bad_lexical_cast());
+        ebs = boost::lexical_cast<unsigned int>(temp);
     }
 
     std::string estr = ebTweak.Validate(ebs);
@@ -1812,28 +1974,18 @@ UniValue getminingcandidate(const UniValue &params, bool fHelp)
     CMiningCandidate candid;
     int64_t coinbaseSize = -1; // If -1 then not used to set coinbase size
 
-    if (fHelp || params.size() > 2)
+    if (fHelp || params.size() > 1)
     {
-        throw runtime_error(
-            "getminingcandidate"
-            "\nReturns Mining-Candidate protocol data.\n"
-            "\nArguments:\n"
-            "1. \"coinbasesize\" (int, optional) Get a fixed size coinbase transaction.\n"
-            "                                  Default: null (null indicates unspecified / use daemon defaults)\n"
-            "2. \"address\"      (string, optional) The address to send the newly generated bitcoin to.\n"
-            "                                     Default: an address in daemon's wallet.\n" +
-            HelpExampleCli("getminingcandidate", "") + HelpExampleCli("getminingcandidate", "1000") +
-            HelpExampleCli("getminingcandidate", "1000 bchtest:qq9rw090p2eu9drv6ptztwx4ghpftwfa0gyqvlvx2q") +
-            HelpExampleCli("getminingcandidate", "null bchtest:qq9rw090p2eu9drv6ptztwx4ghpftwfa0gyqvlvx2q"));
+        throw runtime_error("getminingcandidate"
+                            "\nReturns Mining-Candidate protocol data.\n"
+                            "\nArguments:\n"
+                            "1. \"coinbasesize\" (int, optional) Get a fixed size coinbase transaction.\n" +
+                            HelpExampleCli("", "") + HelpExampleCli("coinbasesize", "100"));
     }
 
-    CScript coinbaseScript;
-    std::string destStr;
-
-    // we accept: param1, param2 or just param1 by itself or null,param2 to only specify param2
-    if (params.size() >= 1 && !params[0].isNull() && !params[0].getValStr().empty())
+    if (params.size() == 1)
     {
-        coinbaseSize = params[0].get_int64(); // may throw, which is what we want
+        coinbaseSize = params[0].get_int64();
         if (coinbaseSize < 0)
         {
             throw std::runtime_error("Requested coinbase size is less than 0");
@@ -1845,23 +1997,8 @@ UniValue getminingcandidate(const UniValue &params, bool fHelp)
                 strprintf("Requested coinbase size too big. Max allowed: %u", BLOCKSTREAM_CORE_MAX_BLOCK_SIZE));
         }
     }
-    if (params.size() == 2)
-    {
-        destStr = params[1].get_str();
-    }
 
-    // validate destination address (if supplied)
-    if (!destStr.empty())
-    {
-        CTxDestination destination = DecodeDestination(destStr);
-        if (!IsValidDestination(destination))
-        {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, strprintf("Error: Invalid address \"%s\"", destStr));
-        }
-        coinbaseScript = GetScriptForDestination(destination);
-    }
-
-    mkblocktemplate(UniValue(UniValue::VARR), coinbaseSize, &candid.block, coinbaseScript);
+    mkblocktemplate(UniValue(UniValue::VARR), coinbaseSize, &candid.block);
 
     ret = MkMiningCandidateJson(candid);
     return ret;
@@ -1872,6 +2009,7 @@ UniValue submitminingsolution(const UniValue &params, bool fHelp)
 {
     UniValue rcvd;
     CBlock block;
+    LOCK(cs_main);
 
     if (fHelp || params.size() != 1)
     {
@@ -1891,17 +2029,15 @@ UniValue submitminingsolution(const UniValue &params, bool fHelp)
 
     int64_t id = rcvd["id"].get_int64();
 
+    // Needs LOCK(cs_main); above:
+    if (miningCandidatesMap.count(id) == 1)
     {
-        LOCK(cs_main);
-        if (miningCandidatesMap.count(id) == 1)
-        {
-            block = miningCandidatesMap[id].block;
-            miningCandidatesMap.erase(id);
-        }
-        else
-        {
-            return UniValue("id not found");
-        }
+        block = miningCandidatesMap[id].block;
+        miningCandidatesMap.erase(id);
+    }
+    else
+    {
+        return UniValue("id not found");
     }
 
     UniValue nonce = rcvd["nonce"];
@@ -2045,7 +2181,6 @@ UniValue validatechainhistory(const UniValue &params, bool fHelp)
     while (pos && !failedChain)
     {
         // LOGA("validate %d %s\n", pos->nHeight, pos->phashBlock->ToString());
-        READLOCK(cs_mapBlockIndex);
         failedChain = pos->nStatus & BLOCK_FAILED_MASK;
         if (!failedChain)
         {
@@ -2061,7 +2196,7 @@ UniValue validatechainhistory(const UniValue &params, bool fHelp)
             pos = stk.top();
             if (pos)
             {
-                WRITELOCK(cs_mapBlockIndex);
+                LOGAF("back===");
                 pos->nStatus |= BLOCK_FAILED_CHILD;
             }
             setDirtyBlockIndex.insert(pos);
@@ -2146,6 +2281,9 @@ UniValue validateblocktemplate(const UniValue &params, bool fHelp)
 }
 
 #ifdef DEBUG
+#ifdef DEBUG_LOCKORDER
+extern std::map<std::pair<void *, void *>, LockStack> lockorders;
+#endif
 
 extern std::vector<std::string> vUseDNSSeeds;
 extern std::list<CNode *> vNodesDisconnected;
@@ -2197,12 +2335,9 @@ extern UniValue getstructuresizes(const UniValue &params, bool fHelp)
     ret.pushKV("vRelayExpiration", (int64_t)vRelayExpiration.size());
     ret.pushKV("vNodes", (int64_t)vNodes.size());
     ret.pushKV("vNodesDisconnected", (int64_t)vNodesDisconnected.size());
-    {
-        READLOCK(orphanpool.cs_orphanpool);
-        ret.pushKV("mapOrphanTransactions", (int64_t)orphanpool.mapOrphanTransactions.size());
-        ret.pushKV("mapOrphanTransactionsByPrev", (int64_t)orphanpool.mapOrphanTransactionsByPrev.size());
-    }
     // CAddrMan
+    ret.pushKV("mapOrphanTransactions", (int64_t)orphanpool.mapOrphanTransactions.size());
+    ret.pushKV("mapOrphanTransactionsByPrev", (int64_t)orphanpool.mapOrphanTransactionsByPrev.size());
 
     uint32_t nExpeditedBlocks, nExpeditedTxs, nExpeditedUpstream;
     connmgr->ExpeditedNodeCounts(nExpeditedBlocks, nExpeditedTxs, nExpeditedUpstream);
@@ -2214,19 +2349,13 @@ extern UniValue getstructuresizes(const UniValue &params, bool fHelp)
         ret.pushKV("txCommitQ", (uint64_t)txCommitQ->size());
     ret.pushKV("txInQ", (uint64_t)txInQ.size());
     ret.pushKV("txDeferQ", (uint64_t)txDeferQ.size());
+
 #ifdef DEBUG_LOCKORDER
-    {
-        std::lock_guard<std::mutex> lock(lockdata.dd_mutex);
-        uint64_t lockorderssize = 0;
-        lockorderssize += lockdata.readlockswaiting.size();
-        lockorderssize += lockdata.writelockswaiting.size();
-        lockorderssize += lockdata.readlocksheld.size();
-        lockorderssize += lockdata.writelocksheld.size();
-        lockorderssize *= 2;
-        ret.pushKV("lockorders", lockorderssize);
-    }
+    ret.pushKV("lockorders", (uint64_t)lockorders.size());
 #endif
+
     LOCK(cs_vNodes);
+    std::vector<CNode *>::iterator n;
     int disconnected = 0; // watch # of disconnected nodes to ensure they are being cleaned up
     for (std::vector<CNode *>::iterator it = vNodes.begin(); it != vNodes.end(); ++it)
     {
@@ -2251,12 +2380,7 @@ extern UniValue getstructuresizes(const UniValue &params, bool fHelp)
                     (int64_t)::GetSerializeSize(*inode.pThinBlockFilter, SER_NETWORK, PROTOCOL_VERSION));
             }
         }
-
-        {
-            LOCK(inode.cs_vSend);
-            node.pushKV("vAddrToSend", (int64_t)inode.vAddrToSend.size());
-        }
-
+        node.pushKV("vAddrToSend", (int64_t)inode.vAddrToSend.size());
         node.pushKV("vInventoryToSend", (int64_t)inode.vInventoryToSend.size());
         ret.pushKV(inode.addrName, node);
     }
@@ -2284,7 +2408,6 @@ struct CompareBlocksByHeight
 void MarkAllContainingChainsInvalid(CBlockIndex *invalidBlock)
 {
     LOCK(cs_main);
-    READLOCK(cs_mapBlockIndex);
 
     bool dirty = false;
     DbgAssert(invalidBlock->nStatus & BLOCK_FAILED_MASK, return );
@@ -2320,10 +2443,12 @@ void MarkAllContainingChainsInvalid(CBlockIndex *invalidBlock)
         {
             for (CBlockIndex *blk = tip; blk != invalidBlock; blk = blk->pprev)
             {
+                LOGAF("back===");
                 blk->nStatus |= BLOCK_FAILED_VALID;
 
                 if ((blk->nStatus & BLOCK_FAILED_CHILD) == 0)
                 {
+                LOGAF("back===");
                     blk->nStatus |= BLOCK_FAILED_CHILD;
                     setDirtyBlockIndex.insert(blk);
                     dirty = true;
@@ -2346,7 +2471,7 @@ UniValue getaddressforms(const UniValue &params, bool fHelp)
                             "\nResult:\n"
                             "{\n"
                             "\"legacy\": \"1 or 3 prefixed address\",\n"
-                            "\"bitcoincash\": \"bitcoincash prefixed address\",\n"
+                            "\"diskcoin\": \"diskcoin prefixed address\",\n"
                             "\"bitpay\": \"C or H prefixed address\"\n"
                             "}\n"
                             "\nExamples:\n" +
@@ -2369,14 +2494,14 @@ UniValue getaddressforms(const UniValue &params, bool fHelp)
 
     UniValue node(UniValue::VOBJ);
     node.pushKV("legacy", legacyAddr);
-    node.pushKV("bitcoincash", cashAddr);
+    node.pushKV("diskcoin", cashAddr);
     node.pushKV("bitpay", bitpayAddr);
     return node;
 }
 
 std::string CStatusString::GetPrintable() const
 {
-    LOCK(cs_status_string);
+    LOCK(cs);
     if (strSet.empty())
         return "ready";
     std::string ret;
@@ -2392,12 +2517,12 @@ std::string CStatusString::GetPrintable() const
 
 void CStatusString::Set(const std::string &yourStatus)
 {
-    LOCK(cs_status_string);
+    LOCK(cs);
     strSet.insert(yourStatus);
 }
 
 void CStatusString::Clear(const std::string &yourStatus)
 {
-    LOCK(cs_status_string);
+    LOCK(cs);
     strSet.erase(yourStatus);
 }
